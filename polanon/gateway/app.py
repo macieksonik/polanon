@@ -179,6 +179,7 @@ class Gateway:
         body = await self._body(receive)
         body, return_pii_map = _return_pii_map_flag(body)
         turn = self._turn()
+        mask_started = time.perf_counter()
         masked = await self._mask(
             lambda: mask_chat_request(
                 turn,
@@ -188,19 +189,31 @@ class Gateway:
             )
         )
         self._check(masked, turn, skip_system_leak=self._config.skip_system)
+        mask_ms = round((time.perf_counter() - mask_started) * 1000, 2)
+        timing_ms = mask_ms if return_pii_map else None
         headers = self._upstream_headers(scope)
         if body.get("stream"):
-            lines = _ChatLines(turn.mapping, return_pii_map=return_pii_map)
-            status = await self._stream("chat/completions", masked, headers, send, lines)
+            lines = _ChatLines(
+                turn.mapping, return_pii_map=return_pii_map, mask_ms=timing_ms
+            )
+            status = await self._stream(
+                "chat/completions", masked, headers, send, lines, mask_ms=timing_ms
+            )
             return status, turn.counts()
         response = await self._post("chat/completions", masked, headers)
         if response.is_success:
             restored = restore_chat_response(turn, _json_of(response))
             if return_pii_map and isinstance(restored, dict):
-                restored = {**restored, "return_pii_map": _pii_map(turn)}
-            await _send_json(send, response.status_code, restored, response.headers)
+                restored = {
+                    **restored,
+                    "return_pii_map": _pii_map(turn),
+                    "polanon_mask_ms": mask_ms,
+                }
+            await _send_json(
+                send, response.status_code, restored, response.headers, mask_ms=timing_ms
+            )
         else:
-            await _send_raw(send, response)
+            await _send_raw(send, response, mask_ms=timing_ms)
         return response.status_code, turn.counts()
 
     async def _responses(
@@ -211,6 +224,7 @@ class Gateway:
         turn = self._turn()
         drop = self._config.unsupported == "drop"
         keep = self._config.unsupported == "pass"
+        mask_started = time.perf_counter()
         masked = await self._mask(
             lambda: mask_responses_request(
                 turn,
@@ -221,19 +235,31 @@ class Gateway:
             )
         )
         self._check(masked, turn)
+        mask_ms = round((time.perf_counter() - mask_started) * 1000, 2)
+        timing_ms = mask_ms if return_pii_map else None
         headers = self._upstream_headers(scope)
         if body.get("stream"):
-            lines = _ResponsesLines(turn.mapping, return_pii_map=return_pii_map)
-            status = await self._stream("responses", masked, headers, send, lines)
+            lines = _ResponsesLines(
+                turn.mapping, return_pii_map=return_pii_map, mask_ms=timing_ms
+            )
+            status = await self._stream(
+                "responses", masked, headers, send, lines, mask_ms=timing_ms
+            )
             return status, turn.counts()
         response = await self._post("responses", masked, headers)
         if response.is_success:
             restored = restore_responses_response(turn, _json_of(response))
             if return_pii_map and isinstance(restored, dict):
-                restored = {**restored, "return_pii_map": _pii_map(turn)}
-            await _send_json(send, response.status_code, restored, response.headers)
+                restored = {
+                    **restored,
+                    "return_pii_map": _pii_map(turn),
+                    "polanon_mask_ms": mask_ms,
+                }
+            await _send_json(
+                send, response.status_code, restored, response.headers, mask_ms=timing_ms
+            )
         else:
-            await _send_raw(send, response)
+            await _send_raw(send, response, mask_ms=timing_ms)
         return response.status_code, turn.counts()
 
     async def _embeddings(
@@ -242,18 +268,27 @@ class Gateway:
         body = await self._body(receive)
         body, return_pii_map = _return_pii_map_flag(body)
         turn = self._turn()
+        mask_started = time.perf_counter()
         masked = await self._mask(lambda: mask_embeddings_request(turn, body))
         self._check(masked, turn)
+        mask_ms = round((time.perf_counter() - mask_started) * 1000, 2)
+        timing_ms = mask_ms if return_pii_map else None
         response = await self._post("embeddings", masked, self._upstream_headers(scope))
         if response.is_success and return_pii_map:
             payload = _json_of(response)
             if isinstance(payload, dict):
-                payload = {**payload, "return_pii_map": _pii_map(turn)}
-                await _send_json(send, response.status_code, payload, response.headers)
+                payload = {
+                    **payload,
+                    "return_pii_map": _pii_map(turn),
+                    "polanon_mask_ms": mask_ms,
+                }
+                await _send_json(
+                    send, response.status_code, payload, response.headers, mask_ms=timing_ms
+                )
             else:
-                await _send_raw(send, response)
+                await _send_raw(send, response, mask_ms=timing_ms)
         else:
-            await _send_raw(send, response)
+            await _send_raw(send, response, mask_ms=timing_ms)
         return response.status_code, turn.counts()
 
     async def _models(self, scope: Scope, send: Send, path: str) -> int:
@@ -273,6 +308,8 @@ class Gateway:
         headers: dict[str, str],
         send: Send,
         lines: _ChatLines | _ResponsesLines,
+        *,
+        mask_ms: float | None = None,
     ) -> int:
         """Stream the answer back, restored chunk by chunk.
 
@@ -284,17 +321,19 @@ class Gateway:
             async with self._client.stream("POST", path, json=masked, headers=headers) as response:
                 if not response.is_success:
                     await response.aread()
-                    await _send_raw(send, response)
+                    await _send_raw(send, response, mask_ms=mask_ms)
                     return response.status_code
                 started = True
+                stream_headers = [
+                    (b"content-type", b"text/event-stream; charset=utf-8"),
+                    (b"cache-control", b"no-cache"),
+                ]
+                stream_headers.extend(_mask_timing_headers(mask_ms))
                 await send(
                     {
                         "type": "http.response.start",
                         "status": response.status_code,
-                        "headers": [
-                            (b"content-type", b"text/event-stream; charset=utf-8"),
-                            (b"cache-control", b"no-cache"),
-                        ],
+                        "headers": stream_headers,
                     }
                 )
                 async for line in response.aiter_lines():
@@ -478,9 +517,16 @@ def _pii_map_dict(mapping: Mapping[str, str]) -> dict[str, str]:
 class _ChatLines:
     """The event stream of a chat completion, restored line by line."""
 
-    def __init__(self, mapping: Mapping[str, str], *, return_pii_map: bool = False) -> None:
+    def __init__(
+        self,
+        mapping: Mapping[str, str],
+        *,
+        return_pii_map: bool = False,
+        mask_ms: float | None = None,
+    ) -> None:
         self._chat = ChatStream(mapping)
         self._pii_map = _pii_map_dict(mapping) if return_pii_map else None
+        self._mask_ms = mask_ms
         self._held: Any | None = None
 
     def line(self, line: str) -> list[bytes]:
@@ -512,21 +558,24 @@ class _ChatLines:
                 out.extend(self._emit_held(False))
                 self._held = rest
         if self._pii_map is not None:
-            out.extend(self._emit_held(True))
+            out.extend(self._emit_held(True, trailing_blank=True))
         return out
 
     def break_off(self) -> list[bytes]:
         """Send a chunk still held for the map, without the map, when the provider breaks off."""
         return self._emit_held(False)
 
-    def _emit_held(self, with_map: bool) -> list[bytes]:
+    def _emit_held(self, with_map: bool, *, trailing_blank: bool = False) -> list[bytes]:
         if self._held is None:
             return []
         chunk = self._held
         self._held = None
         if with_map and self._pii_map is not None:
             chunk = {**chunk, "return_pii_map": dict(self._pii_map)}
-        return [f"data: {_dumps(chunk)}\n".encode()]
+            if self._mask_ms is not None:
+                chunk = {**chunk, "polanon_mask_ms": self._mask_ms}
+        suffix = "\n\n" if trailing_blank else "\n"
+        return [f"data: {_dumps(chunk)}{suffix}".encode()]
 
 
 class _ResponsesLines:
@@ -536,11 +585,18 @@ class _ResponsesLines:
     to be preceded by a delta of what was held back, which needs lines of its own.
     """
 
-    def __init__(self, mapping: Mapping[str, str], *, return_pii_map: bool = False) -> None:
+    def __init__(
+        self,
+        mapping: Mapping[str, str],
+        *,
+        return_pii_map: bool = False,
+        mask_ms: float | None = None,
+    ) -> None:
         self._stream = ResponsesStream(mapping)
         self._name: str | None = None
         self._named = False
         self._pii_map = _pii_map_dict(mapping) if return_pii_map else None
+        self._mask_ms = mask_ms
         self._held: Any | None = None
         self._held_named = False
 
@@ -597,6 +653,8 @@ class _ResponsesLines:
         self._held = None
         if with_map and self._pii_map is not None and isinstance(event, dict):
             event = {**event, "return_pii_map": dict(self._pii_map)}
+            if self._mask_ms is not None:
+                event = {**event, "polanon_mask_ms": self._mask_ms}
         return [self._event(event, named) + b"\n"]
 
     def _event(self, event: Any, named: bool | None = None) -> bytes:
@@ -611,8 +669,19 @@ def _dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _mask_timing_headers(mask_ms: float | None) -> list[tuple[bytes, bytes]]:
+    if mask_ms is None:
+        return []
+    return [(b"server-timing", f"polanon-mask;dur={mask_ms}".encode())]
+
+
 async def _send_json(
-    send: Send, status: int, payload: Any, upstream: httpx.Headers | None = None
+    send: Send,
+    status: int,
+    payload: Any,
+    upstream: httpx.Headers | None = None,
+    *,
+    mask_ms: float | None = None,
 ) -> None:
     body = json.dumps(payload, ensure_ascii=False).encode()
     headers = [(b"content-type", b"application/json")]
@@ -622,12 +691,15 @@ async def _send_json(
             for name, value in upstream.items()
             if name.lower() not in _NOT_RETURNED and name.lower() != "content-type"
         ]
+    headers.extend(_mask_timing_headers(mask_ms))
     headers.append((b"content-length", str(len(body)).encode()))
     await send({"type": "http.response.start", "status": status, "headers": headers})
     await send({"type": "http.response.body", "body": body})
 
 
-async def _send_raw(send: Send, response: httpx.Response) -> None:
+async def _send_raw(
+    send: Send, response: httpx.Response, *, mask_ms: float | None = None
+) -> None:
     """Pass the provider's answer on as it came: an error, a list of models or embeddings."""
     body = response.content
     headers = [
@@ -635,6 +707,7 @@ async def _send_raw(send: Send, response: httpx.Response) -> None:
         for name, value in response.headers.items()
         if name.lower() not in _NOT_RETURNED
     ]
+    headers.extend(_mask_timing_headers(mask_ms))
     headers.append((b"content-length", str(len(body)).encode()))
     await send({"type": "http.response.start", "status": response.status_code, "headers": headers})
     await send({"type": "http.response.body", "body": body})

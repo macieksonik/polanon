@@ -687,6 +687,93 @@ async def test_the_log_never_quotes_a_returned_mapping(caplog):
     assert not any(value in caplog.text for value in RAW)
 
 
+def _assert_mask_timing(response, *, expect: bool) -> None:
+    payload = response.json() if response.headers.get("content-type", "").startswith("application/json") else None
+    timing_hdr = response.headers.get("server-timing", "")
+    if expect:
+        assert payload is not None
+        assert isinstance(payload.get("polanon_mask_ms"), float)
+        assert payload["polanon_mask_ms"] >= 0
+        assert "polanon-mask;dur=" in timing_hdr
+    else:
+        if payload is not None:
+            assert "polanon_mask_ms" not in payload
+        assert "polanon-mask;dur=" not in timing_hdr
+
+
+async def test_polanon_mask_ms_and_server_timing_only_when_return_pii_map_is_true():
+    provider = Provider()
+    async with client(provider) as gw:
+        on = await gw.post(
+            "/v1/chat/completions",
+            json=chat("Jan Kowalski.", return_pii_map=True),
+        )
+        off = await gw.post("/v1/chat/completions", json=chat("Jan Kowalski.", return_pii_map=False))
+        absent = await gw.post("/v1/chat/completions", json=chat("Jan Kowalski."))
+    _assert_mask_timing(on, expect=True)
+    _assert_mask_timing(off, expect=False)
+    _assert_mask_timing(absent, expect=False)
+
+
+async def test_polanon_mask_ms_on_embeddings_and_responses_when_return_pii_map():
+    received = []
+    async with client(Provider()) as gw, client(_responses_provider(received)) as gw_resp:
+        emb = await gw.post(
+            "/v1/embeddings",
+            json={"model": "e", "input": ["Jan Kowalski"], "return_pii_map": True},
+        )
+        resp = await gw_resp.post(
+            "/v1/responses",
+            json=responses_body("Jan Kowalski.", return_pii_map=True),
+        )
+    assert emb.json()["polanon_mask_ms"] >= 0
+    assert "polanon-mask;dur=" in emb.headers.get("server-timing", "")
+    assert resp.json()["polanon_mask_ms"] >= 0
+    assert "polanon-mask;dur=" in resp.headers.get("server-timing", "")
+
+
+async def test_streamed_chat_carries_polanon_mask_ms_on_the_last_event_only():
+    provider = Provider()
+    async with client(provider) as gw:
+        response = await gw.post(
+            "/v1/chat/completions",
+            json=chat("Jan Kowalski dzwonił.", stream=True, return_pii_map=True),
+        )
+    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: {")]
+    assert isinstance(events[-1].get("polanon_mask_ms"), float)
+    assert events[-1]["polanon_mask_ms"] >= 0
+    assert all("polanon_mask_ms" not in event for event in events[:-1])
+    assert "polanon-mask;dur=" in response.headers.get("server-timing", "")
+
+
+async def test_streamed_responses_carries_polanon_mask_ms_on_the_last_event_only():
+    received = []
+    async with client(_responses_provider(received)) as gw:
+        response = await gw.post(
+            "/v1/responses",
+            json=responses_body("Jan Kowalski.", stream=True, return_pii_map=True),
+        )
+    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: {")]
+    assert events[-1]["polanon_mask_ms"] >= 0
+    assert all("polanon_mask_ms" not in event for event in events[:-1])
+
+
+async def test_streamed_chat_with_return_pii_map_separates_the_last_chunk_from_done():
+    provider = Provider()
+    async with client(provider) as gw:
+        response = await gw.post(
+            "/v1/chat/completions",
+            json=chat("Jan Kowalski.", stream=True, return_pii_map=True),
+        )
+    blocks = [block.strip() for block in response.text.split("\n\n") if block.strip()]
+    assert any(block == "data: [DONE]" for block in blocks)
+    for block in blocks:
+        if block == "data: [DONE]":
+            continue
+        assert block.startswith("data: ")
+        json.loads(block[6:])
+
+
 COMPANY = 'Firma "Kot & Syn" Sp. z o.o.'
 
 
