@@ -611,3 +611,55 @@ def test_a_capitalised_common_surname_settles_no_lowercase_word_before_it():
 
 def test_a_common_surname_in_a_lowercase_list_still_settles_its_first_name():
     assert _found("1. maja nowak") == ["maja nowak"]
+
+
+STT_FISHER = (
+    "Wie pani co, ale ja to auto sprzedałem temu fisherowi, yyy, Jerzemu fisherowi w zeszłym roku."
+)
+STT_ARLUKOWICZ = (
+    "yy, ja sprzedałem ten samochód w Bartoszowie Arłukowiczowi w zeszłym roku. "
+    "Jego PESEL to 72020201222, a numer telefonu do niego to 22 256 53 08."
+)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (STT_FISHER, ["Jerzemu fisherowi"]),
+        (STT_ARLUKOWICZ, ["Bartoszowie Arłukowiczowi"]),
+    ],
+)
+def test_stt_style_surnames_are_detected_in_transcripts(text, expected):
+    assert _found(text) == expected
+
+
+def test_common_dative_nouns_after_first_names_stay_unmasked():
+    assert "szefowi" not in " ".join(_found("dałem Jerzemu szefowi raport"))
+    assert "bratu" not in " ".join(_found("wysłałem Piotrowi bratu dokument"))
+
+
+async def test_stt_transcripts_are_masked_without_a_language_model():
+    anonymizer = Anonymizer(default_guards(with_ner=False))
+    fisher = await anonymizer.anonymize(STT_FISHER)
+    assert "fisherowi" not in fisher.anonymized
+    assert "Jerzemu" not in fisher.anonymized
+    arluk = await anonymizer.anonymize(STT_ARLUKOWICZ)
+    assert "Arłukowiczowi" not in arluk.anonymized
+    assert "Bartoszowie" not in arluk.anonymized
+    assert arluk.mapping["<PESEL_1>"] == "72020201222"
+    assert arluk.mapping["<TELEFON_1>"] == "22 256 53 08"
+
+
+def test_lowercase_dative_surname_parts_are_returned_for_known_values():
+    assert person_name_parts("Jerzemu fisherowi") == ["fisherowi"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Paczka trafi do Mickiewicza 3 w Nowym Sączu.",
+        "ul. Słowackiego 12",
+    ],
+)
+def test_street_names_in_oblique_case_stay_unmasked(text):
+    assert _found(text) == []
