@@ -25,6 +25,14 @@ only for a change that breaks something, as CONTRIBUTING.md describes.
   restored as before. The mapping is as sensitive as the restored answer and is
   never logged or sent upstream.
 
+### Fixed
+
+- **Surnames in speech-to-text transcripts.** A lowercase foreign dative on
+  `-owi` after a known first name is masked with that name, and its stem is a
+  known part of the person. A strong surname in an oblique case is masked when
+  it stands alone or follows one distorted, capitalised first-name token.
+  Street addresses, dotted abbreviations and form labels stay as they are.
+
 ## [0.3.9] - 2026-11-17
 
 What public Polish data showed polanon missing, fixed, and a benchmark that keeps measuring on
