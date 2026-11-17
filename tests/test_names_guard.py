@@ -5,6 +5,7 @@ import pytest
 from polanon import Anonymizer, PersonNameGuard, default_guards
 from polanon.guards.names_pl import (
     AMBIGUOUS_FORMS,
+    LONE_NAME_SCORE,
     NAME_FORMS,
     decline_feminine,
     decline_masculine,
@@ -721,3 +722,15 @@ def test_a_capitalised_surname_in_a_pesel_sentence_is_masked_with_the_number():
 def test_a_lowercase_or_shouted_surname_alone_stays():
     assert _found("numer tego kalinowskiego") == []
     assert _found("numer tego KALINOWSKIEGO") == []
+
+
+def test_a_town_in_the_locative_scores_below_the_language_model():
+    """Gdańsku has a surname ending, and at the name score it hid the place the model finds."""
+    text = "Jan Kowalski mieszka w Gdańsku."
+    town = next(
+        span
+        for span in PersonNameGuard().detect(text, PERSON)
+        if text[span.start : span.end] == "Gdańsku"
+    )
+    assert town.score == LONE_NAME_SCORE
+    assert town.score < 0.85

@@ -832,7 +832,8 @@ def _standalone_oblique_surname(
     distorted = _distorted_first_name_before(text, words, index, taken, surname.tags)
     if distorted is not None:
         return distorted, index, None, False
-    return index, index, None, False
+    # Below the language model, so "w Gdańsku" stays a place when the model is loaded.
+    return index, index, None, True
 
 
 def _agrees(surname: frozenset[Tag], wanted: frozenset[Tag]) -> bool:
