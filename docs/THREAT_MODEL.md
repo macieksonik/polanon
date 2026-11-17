@@ -197,7 +197,8 @@ application's part:
 
 ## The gateway
 
-`polanon-gateway` masks the calls of tools that speak the OpenAI API and restores their answers.
+`polanon-gateway` masks the calls of tools that speak the OpenAI API or Anthropic's Messages
+API and restores their answers.
 It is software the operator runs on their own machine, not a service: nobody else holds the
 calls, the keys or the logs. What it protects:
 
@@ -239,6 +240,9 @@ What it does not protect, and is the operator's part:
   history and out of files others can read.
 - **Encryption on the network.** The gateway speaks plain HTTP. Beyond `127.0.0.1`, put it behind
   TLS, or keep it on a network the operator trusts.
+- **Names the operator leaves readable.** A name given with `--allow` or `--allow-file` goes to
+  the provider as it is, wherever it stands, a person's too: the assistant's own name or the
+  company it speaks for are meant for the model, and so is whatever the operator lists there.
 - **Detection.** The gateway masks what the guards find, no more: run it with the spaCy model, and
   read "Residual risk" below. The stage-2 judge is not used.
 - **What the provider learns anyway.** The structure of the conversation, its length and timing,

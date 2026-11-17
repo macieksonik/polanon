@@ -13,7 +13,30 @@ while it streams. Pure Python: the standard library is the whole core.
 Featured in [unknowNews](https://mrugalski.pl/nl/wu/ojVtmS0K0CI892763N1hEauM1A), Jakub
 Mrugalski's weekly newsletter for people in IT, on 13 November 2026.
 
-![polanon masking a Polish invoice request in a terminal, then restoring the model's answer in Python](https://raw.githubusercontent.com/boromat/polanon/main/docs/demo.gif)
+<p align="center"><a href="https://boromat.github.io/en/demo/"><img src="https://raw.githubusercontent.com/boromat/polanon/main/docs/try-demo.svg" alt="Try polanon in your browser"></a></p>
+
+**Without writing code**, with the gateway in Docker. Claude Code, n8n, Open WebUI, LibreChat,
+Hermes Agent and any other tool that speaks the OpenAI or Anthropic API keep working as they did,
+and every call is masked before it leaves:
+
+```bash
+export POLANON_UPSTREAM_KEY=sk-...                 # your provider's key
+export POLANON_GATEWAY_KEY=$(openssl rand -hex 16)  # the key your tools will send
+docker run --rm -p 127.0.0.1:8787:8787 -e POLANON_UPSTREAM_KEY -e POLANON_GATEWAY_KEY \
+    ghcr.io/boromat/polanon-gateway:0.3 --upstream https://api.openai.com/v1
+```
+
+Then give the tool `http://127.0.0.1:8787/v1` as its base URL and the value of
+`POLANON_GATEWAY_KEY` as its API key. One gateway serves one provider: for Claude Code start
+another with `--upstream https://api.anthropic.com/v1`, an Anthropic key and
+`-p 127.0.0.1:8788:8787`, then run
+`ANTHROPIC_BASE_URL=http://127.0.0.1:8788 ANTHROPIC_API_KEY=$POLANON_GATEWAY_KEY claude`. Every
+tool, the gateway without Docker, and what it does with a call are in
+[the gateway's section](#a-gateway-for-any-openai-compatible-tool).
+
+**In Python**, in your own code: mask a text, send it, restore the answer.
+
+![polanon in a terminal: masking a Polish text in Python and restoring the answer, the gateway in Docker in front of a tool, and the scores against Presidio](https://raw.githubusercontent.com/boromat/polanon/main/docs/demo.svg)
 
 ```bash
 pip install polanon
@@ -61,19 +84,26 @@ Plusgiro and sort codes, international phone numbers, street addresses and postc
 
 ## How it compares
 
+![polanon and Presidio on Polish data polanon was never tuned on: values masked whole, false alarms, by kind of value, and people in real Polish text](https://raw.githubusercontent.com/boromat/polanon/main/docs/comparison.svg)
+
 |  | polanon | [Presidio](https://github.com/data-privacy-stack/presidio) | [pii-veil](https://pypi.org/project/pii-veil/) | [piimask](https://pypi.org/project/piimask/) |
 |---|---|---|---|---|
 | Restores the model's answer | Yes, from stable tokens such as `<OSOBA_1>`, also while it streams | Not built in: its deanonymizer decrypts spans at known positions; its docs include a sample that restores an LLM answer | Yes, from stable tokens and a saved mapping | Yes, from stable tokens |
 | Polish identifiers with a checksum | PESEL, NIP, REGON, ID card, IBAN, payment cards | PESEL; IBAN and payment cards in general | PESEL, NIP, REGON, IBAN, payment cards; ID card and passport by pattern only | None; IBAN and payment cards in general |
 | Polish names in every grammatical case | For listed first names and the surnames that agree with them, without a language model; spaCy adds the rest | With a Polish spaCy model and its `persName` label mapped | Not detected | Not detected; its README suggests adding an NER model |
 | What the core needs | Nothing beyond the standard library | spaCy, numpy, pydantic and a few more; a language model only for names and places | pii-core and typer | Nothing beyond the standard library |
-| On polanon's [sample documents](https://github.com/boromat/polanon/blob/main/benchmarks/README.md) | 98% fully masked with `pl_core_news_md`, 86% with rules alone | 66% with the same model (presidio-analyzer 2.2.366) | Not measured | Not measured |
+| On Polish data neither was tuned on ([OpenPII, KPWr](https://github.com/boromat/polanon/blob/main/benchmarks/README.md#on-data-polanon-was-never-tuned-on)) | 71% of 5,255 values masked whole with `pl_core_news_md`, 435 false alarms; 90% of people in real text | 66%, 2,641 false alarms; 90% of people (presidio-analyzer 2.2.366, same model) | Not measured | Not measured |
+| On polanon's own [sample documents](https://github.com/boromat/polanon/blob/main/benchmarks/README.md), tuned on | 98% fully masked with `pl_core_news_md`, 86% with rules alone | 67% with the same model | Not measured | Not measured |
 | License | MIT | MIT | Apache-2.0 | MIT |
 
-Compared from each project's own documentation and source on 3 November 2026. Only Presidio was
-run on the sample documents, with the script in `benchmarks/`, and that is not neutral ground: the
-eleven synthetic documents were written by polanon's author, who tuned its rules on them, and
-Presidio had only the Polish model, also for the three invoices from abroad. Each has its place:
+Compared from each project's own documentation and source on 3 November 2026; measured on 17
+November 2026. Only Presidio was run, with the scripts in `benchmarks/`. polanon's own thirteen
+documents are not neutral ground: its author wrote them and tuned its rules on them, and Presidio
+had only the Polish model, also for the three invoices from abroad. The Polish rows of ai4privacy's
+OpenPII and CLARIN-PL's KPWr are: polanon was never tuned on the parts measured, and on them the
+gap narrows to five points and six times fewer false alarms, with a tie on people, where the same
+spaCy model does the work. Presidio wins on random codes written without a label, which it reads
+with low-score patterns that also mark product codes and order numbers. Each has its place:
 Presidio for many languages, structured data and its Azure integration; pii-veil for Polish
 identifiers under Apache-2.0 when names do not matter; piimask for language-neutral identifiers
 (e-mail, phone numbers, payment cards, IBAN, IP addresses, URLs) and US social security numbers,
@@ -90,6 +120,7 @@ and the restored answer matter as much as the numbers.
 | The stage-2 judges (a local Ollama model, or a remote one) | `pip install "polanon[judge]"` |
 | Components for [Haystack 3](#with-haystack) pipelines | `pip install "polanon[haystack]"` |
 | A [gateway](#a-gateway-for-any-openai-compatible-tool) for tools that use the OpenAI API | `pip install "polanon[gateway]"` |
+| The gateway as a Docker image, with the spaCy model inside | `docker pull ghcr.io/boromat/polanon-gateway:0.3` |
 
 Then use `default_guards()` with the model, or `default_guards(with_ner=False)` without it.
 Another spaCy model is one argument away: `default_guards(spacy_model="pl_core_news_lg")`.
@@ -426,18 +457,43 @@ Then point the tool's base URL at `http://127.0.0.1:8787/v1` and keep its API ke
 passes it on to the provider. A local model works the same way, `--upstream
 http://localhost:11434/v1` for Ollama.
 
+Or in Docker, with the spaCy model inside, on Intel and ARM machines alike:
+
+```bash
+docker run --rm -p 127.0.0.1:8787:8787 -e POLANON_UPSTREAM_KEY -e POLANON_GATEWAY_KEY \
+    ghcr.io/boromat/polanon-gateway:0.3 --upstream https://api.openai.com/v1
+```
+
+Inside a container the gateway listens on every interface, so it starts only with
+`POLANON_GATEWAY_KEY`, the key every tool then sends as its API key, and needs
+`POLANON_UPSTREAM_KEY`, the provider's key it sends on instead. `-p 127.0.0.1:8787:8787`
+keeps the port on this machine. Every option of `polanon-gateway` goes after the image's
+name. A model on the same machine, such as Ollama, is `--upstream
+http://host.docker.internal:11434/v1`, on Linux with `--add-host=host.docker.internal:host-gateway`.
+The image is tagged with the version, such as `0.3.9`, the minor version, `0.3`, and `latest`.
+
 | Tool | Where the base URL goes |
 |---|---|
 | Hermes Agent | `base_url` of the model or of a named provider in `config.yaml` |
 | n8n | the Base URL of the OpenAI credential |
 | Open WebUI | the URL of an OpenAI API connection |
 | LibreChat | the `baseURL` of a custom endpoint in `librechat.yaml` |
+| an app on Anthropic's SDK, Claude Code | `base_url`, or `ANTHROPIC_BASE_URL`, as `http://127.0.0.1:8787` |
+
+A tool that speaks Anthropic's Messages API needs a gateway of its own, started with
+`--upstream https://api.anthropic.com/v1`; its key, sent as `x-api-key` or as a bearer token, is
+passed on as the OpenAI key is, and a base URL ending in `/v1` works for it too.
 
 What it does with a call:
 
-- It serves `/v1/chat/completions` and the Responses API, `/v1/responses`, streamed or not,
-  `/v1/embeddings` and `/v1/models`, and refuses every other endpoint, so nothing it cannot mask
-  leaves as it came.
+- It serves `/v1/chat/completions`, the Responses API, `/v1/responses`, and Anthropic's
+  Messages API, `/v1/messages`, streamed or not, with `/v1/messages/count_tokens`,
+  `/v1/embeddings` and `/v1/models`, and refuses every other endpoint, so nothing it cannot
+  mask leaves as it came.
+- With the Messages API the system prompt, the messages, the tools and the metadata are
+  masked, and the note about tokens joins the system prompt. A thinking block passes as the
+  model wrote it, from masked text: the provider checks its signature. The last check still
+  searches it.
 - With the Responses API the whole conversation comes with every call, as Hermes Agent sends it
   with `store: false`. A call that leaves it at the provider, with `previous_response_id` or
   `conversation`, or asks for a `background` response to fetch later, would bring back tokens no
@@ -457,6 +513,10 @@ What it does with a call:
 - `--paranoid` masks every name the spaCy model finds, as `mode="paranoid"` does. By default
   what it finds in English prose, code and identifiers is left out, since an agent's prompt,
   tools and logs are full of English words the Polish model takes for names.
+- `--allow NAME`, given as many times as needed, and `--allow-file PATH`, a file with one name
+  per line, leave readable the names the model has to see as they are, such as the assistant's
+  own and the company it speaks for; a person named so stays readable too. Everything else in
+  the prompt is masked as before.
 - It keeps nothing on disk. A tool sends the whole conversation with every call, and each call is
   masked and restored on its own. With `POLANON_KEY` set to 64 hexadecimal characters, a person
   keeps one token in every call and in every grammatical case.
@@ -473,14 +533,14 @@ What it does with a call:
   prompt and in the question stays in the prompt and is a token in the question.
 
 Keys stay with whoever runs the gateway, and come from the environment only. By default the
-tool's own key is passed on; `POLANON_UPSTREAM_KEY` sends another one instead. The gateway listens
-on `127.0.0.1`. To reach it from another machine, set `--host` and `POLANON_GATEWAY_KEY`, which
-every client must then send: without the key it refuses to start. The log names the path, the
+tool's own key is passed on; `POLANON_UPSTREAM_KEY` sends another one instead, as a bearer
+token or, to Anthropic, as `x-api-key`. The gateway listens on `127.0.0.1`. To reach it from
+another machine, set `--host` and `POLANON_GATEWAY_KEY`, which every client must then send,
+as a bearer token or as `x-api-key`: without the key it refuses to start. The log names the path, the
 status, the time and how many values of each type were masked, never a value.
 
 There is no hosted service: the gateway runs where it is installed, and whoever runs it answers
-for that machine, its keys and the provider the calls go to. Not supported yet: Anthropic's
-Messages API. The
+for that machine, its keys and the provider the calls go to. The
 [threat model](https://github.com/boromat/polanon/blob/main/docs/THREAT_MODEL.md#the-gateway) says
 what the gateway protects and what it does not.
 
@@ -490,7 +550,7 @@ Checksum-validated Polish identifiers (PESEL, NIP, REGON, ID card, IBAN, payment
 next to their label, e-mail addresses and phone numbers, street addresses and postcodes, links to
 a person's profile (LinkedIn, GitHub, GitHub Pages, GitLab, social media) up to the handle, IPv4
 and IPv6, MAC addresses, vehicle registrations after their label ("nr rej."), VINs, passport
-numbers, birth dates, API keys, tokens and passwords, Polish first names with their surnames, and
+numbers, driving licence numbers after their label, birth dates, API keys, tokens and passwords, Polish first names with their surnames, and
 company names anchored on a legal form ("Sp. z o.o.", "S.A.", "Ltd", "GmbH"). Once a person or a
 profile link is masked, the surname or the handle alone is masked wherever it appears in the same
 text: "Kowalski" after "Jan Kowalski", "jkowalski" in a JSON field after "github.com/jkowalski".

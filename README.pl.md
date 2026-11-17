@@ -14,7 +14,29 @@ nie potrzebuje niczego poza biblioteką standardową.
 polanon trafił do [unknowNews](https://mrugalski.pl/nl/wu/ojVtmS0K0CI892763N1hEauM1A),
 cotygodniowego newslettera Jakuba Mrugalskiego dla ludzi z branży IT, 13 listopada 2026.
 
-![polanon w terminalu maskuje polską prośbę o korektę faktury, a potem w Pythonie przywraca dane w odpowiedzi modelu](https://raw.githubusercontent.com/boromat/polanon/main/docs/demo.gif)
+<p align="center"><a href="https://boromat.github.io/demo/"><img src="https://raw.githubusercontent.com/boromat/polanon/main/docs/try-demo.pl.svg" alt="Wypróbuj polanon w przeglądarce"></a></p>
+
+**Bez pisania kodu**, z bramką w Dockerze. Claude Code, n8n, Open WebUI, LibreChat, Hermes Agent
+i każde inne narzędzie, które mówi API OpenAI albo Anthropic, działają jak dotąd, a każde
+wywołanie jest maskowane, zanim wyjdzie:
+
+```bash
+export POLANON_UPSTREAM_KEY=sk-...                 # klucz twojego dostawcy
+export POLANON_GATEWAY_KEY=$(openssl rand -hex 16)  # klucz, który wyślą twoje narzędzia
+docker run --rm -p 127.0.0.1:8787:8787 -e POLANON_UPSTREAM_KEY -e POLANON_GATEWAY_KEY \
+    ghcr.io/boromat/polanon-gateway:0.3 --upstream https://api.openai.com/v1
+```
+
+Potem ustaw w narzędziu adres bazowy `http://127.0.0.1:8787/v1`, a jako klucz API wartość
+`POLANON_GATEWAY_KEY`. Jedna bramka obsługuje jednego dostawcę: dla Claude Code uruchom drugą,
+z `--upstream https://api.anthropic.com/v1`, kluczem Anthropic i `-p 127.0.0.1:8788:8787`, a potem
+`ANTHROPIC_BASE_URL=http://127.0.0.1:8788 ANTHROPIC_API_KEY=$POLANON_GATEWAY_KEY claude`.
+Wszystkie narzędzia, bramkę bez Dockera i to, co robi z wywołaniem, opisuje
+[rozdział o bramce](#bramka-dla-każdego-narzędzia-zgodnego-z-api-openai).
+
+**W Pythonie**, we własnym kodzie: zamaskuj tekst, wyślij go, przywróć odpowiedź.
+
+![polanon w terminalu: maskowanie polskiego tekstu w Pythonie i przywracanie odpowiedzi, bramka w Dockerze przed narzędziem i wyniki wobec Presidio](https://raw.githubusercontent.com/boromat/polanon/main/docs/demo.pl.svg)
 
 ```bash
 pip install polanon
@@ -66,26 +88,34 @@ pocztowe.
 
 ## Na tle innych
 
+![polanon i Presidio na polskich danych, na których polanon nie był strojony: wartości zamaskowane w całości, fałszywe alarmy, rodzaje danych i osoby w prawdziwych tekstach](https://raw.githubusercontent.com/boromat/polanon/main/docs/comparison.pl.svg)
+
 |  | polanon | [Presidio](https://github.com/data-privacy-stack/presidio) | [pii-veil](https://pypi.org/project/pii-veil/) | [piimask](https://pypi.org/project/piimask/) |
 |---|---|---|---|---|
 | Przywracanie danych w odpowiedzi modelu | Tak, ze stabilnych tokenów takich jak `<OSOBA_1>`, także strumieniowo | Nie jest wbudowane: jego deanonymizer odszyfrowuje fragmenty na znanych pozycjach; dokumentacja zawiera przykład, który przywraca dane w odpowiedzi LLM | Tak, ze stabilnych tokenów i zapisanego mapowania | Tak, ze stabilnych tokenów |
 | Polskie identyfikatory z sumą kontrolną | PESEL, NIP, REGON, dowód osobisty, IBAN, karty płatnicze | PESEL; IBAN i karty płatnicze w wersji ogólnej | PESEL, NIP, REGON, IBAN, karty płatnicze; dowód osobisty i paszport tylko według wzorca | Brak; IBAN i karty płatnicze w wersji ogólnej |
 | Polskie imiona i nazwiska w każdym przypadku gramatycznym | Dla imion z listy i zgodnych z nimi nazwisk, bez modelu językowego; resztę dokłada spaCy | Z polskim modelem spaCy i zmapowaną etykietą `persName` | Nie są wykrywane | Nie są wykrywane; jego README sugeruje dodanie modelu NER |
 | Czego potrzebuje rdzeń | Niczego poza biblioteką standardową | spaCy, numpy, pydantic i kilku innych pakietów; modelu językowego tylko do imion i nazwisk oraz miejsc | pii-core i typer | Niczego poza biblioteką standardową |
-| Na [przykładowych dokumentach](https://github.com/boromat/polanon/blob/main/benchmarks/README.md) biblioteki polanon | 98% zamaskowanych w całości z `pl_core_news_md`, 86% przy samych regułach | 66% z tym samym modelem (presidio-analyzer 2.2.366) | Nie mierzono | Nie mierzono |
+| Na polskich danych, na których żadne nie było strojone ([OpenPII, KPWr](https://github.com/boromat/polanon/blob/main/benchmarks/README.md#on-data-polanon-was-never-tuned-on)) | 71% z 5255 wartości zamaskowanych w całości z `pl_core_news_md`, 435 fałszywych alarmów; 90% osób w prawdziwych tekstach | 66%, 2641 fałszywych alarmów; 90% osób (presidio-analyzer 2.2.366, ten sam model) | Nie mierzono | Nie mierzono |
+| Na własnych [przykładowych dokumentach](https://github.com/boromat/polanon/blob/main/benchmarks/README.md) biblioteki polanon, na których była strojona | 98% zamaskowanych w całości z `pl_core_news_md`, 86% przy samych regułach | 67% z tym samym modelem | Nie mierzono | Nie mierzono |
 | Licencja | MIT | MIT | Apache-2.0 | MIT |
 
 Porównanie na podstawie własnej dokumentacji i kodu źródłowego każdego z projektów, stan na
-3 listopada 2026 r. Na przykładowych dokumentach uruchomiono tylko Presidio, skryptem
-z `benchmarks/`, i nie są to neutralne warunki: jedenaście syntetycznych dokumentów napisał autor
-biblioteki polanon, który dostrajał na nich jej reguły, a Presidio dostał tylko polski model, także
-do trzech faktur z zagranicy. Każde z tych narzędzi ma swoje miejsce. Presidio służy do wielu języków,
-danych ustrukturyzowanych i integracji z Azure, pii-veil do polskich identyfikatorów na licencji
-Apache-2.0, gdy imiona i nazwiska nie mają znaczenia, a piimask do identyfikatorów niezależnych od
-języka (e-mail, numery telefonów, karty płatnicze, IBAN, adresy IP, adresy URL) i amerykańskich
-numerów ubezpieczenia społecznego, ze strategiami podstawiania fałszywych wartości, haszowania
-i częściowego maskowania oraz zaszyfrowanym sejfem. polanon jest dla polskiego tekstu wysyłanego do
-modelu, gdy imiona i nazwiska w nim zawarte oraz przywrócona odpowiedź liczą się tak samo jak numery.
+3 listopada 2026 r.; pomiary z 17 listopada 2026 r. Uruchomiono tylko Presidio, skryptami
+z `benchmarks/`. Trzynaście własnych dokumentów biblioteki polanon nie jest neutralnym terenem:
+napisał je jej autor i dostrajał na nich reguły, a Presidio dostał tylko polski model, także do
+trzech faktur z zagranicy. Neutralne są polskie wiersze OpenPII od ai4privacy i KPWr od CLARIN-PL:
+na mierzonych częściach polanon nigdy nie był strojony, a różnica maleje tam do pięciu punktów
+i sześć razy mniej fałszywych alarmów, z remisem na osobach, gdzie pracuje ten sam model spaCy.
+Presidio wygrywa na losowych kodach bez etykiety, które czyta wzorcami o niskiej pewności,
+oznaczającymi też kody produktów i numery zamówień. Każde z tych narzędzi ma swoje miejsce. Presidio
+służy do wielu języków, danych ustrukturyzowanych i integracji z Azure, pii-veil do polskich
+identyfikatorów na licencji Apache-2.0, gdy imiona i nazwiska nie mają znaczenia, a piimask do
+identyfikatorów niezależnych od języka (e-mail, numery telefonów, karty płatnicze, IBAN, adresy IP,
+adresy URL) i amerykańskich numerów ubezpieczenia społecznego, ze strategiami podstawiania
+fałszywych wartości, haszowania i częściowego maskowania oraz zaszyfrowanym sejfem. polanon jest dla
+polskiego tekstu wysyłanego do modelu, gdy imiona i nazwiska w nim zawarte oraz przywrócona
+odpowiedź liczą się tak samo jak numery.
 
 ## Instalacja
 
@@ -96,6 +126,7 @@ modelu, gdy imiona i nazwiska w nim zawarte oraz przywrócona odpowiedź liczą 
 | Sędziowie etapu 2 (lokalny model w Ollamie albo zdalny) | `pip install "polanon[judge]"` |
 | Komponenty do potoków [Haystacka 3](#z-haystackiem) | `pip install "polanon[haystack]"` |
 | [Bramka](#bramka-dla-każdego-narzędzia-zgodnego-z-api-openai) dla narzędzi korzystających z API OpenAI | `pip install "polanon[gateway]"` |
+| Bramka jako obraz Dockera, z modelem spaCy w środku | `docker pull ghcr.io/boromat/polanon-gateway:0.3` |
 
 Następnie użyj `default_guards()` z modelem albo `default_guards(with_ner=False)` bez niego.
 Inny model spaCy to kwestia jednego argumentu: `default_guards(spacy_model="pl_core_news_lg")`.
@@ -440,18 +471,44 @@ Potem ustaw w narzędziu adres bazowy `http://127.0.0.1:8787/v1` i zostaw jego k
 przekazuje go dostawcy. Model lokalny działa tak samo, dla Ollamy `--upstream
 http://localhost:11434/v1`.
 
+Albo w Dockerze, z modelem spaCy w środku, tak samo na komputerach z procesorem Intel i ARM:
+
+```bash
+docker run --rm -p 127.0.0.1:8787:8787 -e POLANON_UPSTREAM_KEY -e POLANON_GATEWAY_KEY \
+    ghcr.io/boromat/polanon-gateway:0.3 --upstream https://api.openai.com/v1
+```
+
+W kontenerze bramka słucha na wszystkich interfejsach, więc startuje tylko
+z `POLANON_GATEWAY_KEY`, kluczem, który każde narzędzie wysyła potem jako swój klucz API,
+i potrzebuje `POLANON_UPSTREAM_KEY`, klucza dostawcy, który wysyła zamiast niego.
+`-p 127.0.0.1:8787:8787` zostawia port na tym komputerze. Każda opcja `polanon-gateway` idzie
+po nazwie obrazu. Model na tym samym komputerze, na przykład Ollama, to `--upstream
+http://host.docker.internal:11434/v1`, a na Linuksie dodatkowo
+`--add-host=host.docker.internal:host-gateway`. Obraz ma tagi z wersją, na przykład `0.3.9`,
+z wersją pomniejszą, `0.3`, i `latest`.
+
 | Narzędzie | Gdzie wpisać adres bazowy |
 |---|---|
 | Hermes Agent | `base_url` modelu albo nazwanego dostawcy w `config.yaml` |
 | n8n | Base URL w poświadczeniach OpenAI |
 | Open WebUI | adres połączenia z API OpenAI |
 | LibreChat | `baseURL` własnego endpointu w `librechat.yaml` |
+| aplikacja na SDK Anthropic, Claude Code | `base_url` albo `ANTHROPIC_BASE_URL` jako `http://127.0.0.1:8787` |
+
+Narzędzie, które mówi Messages API Anthropic, potrzebuje osobnej bramki, uruchomionej
+z `--upstream https://api.anthropic.com/v1`; jego klucz, wysłany jako `x-api-key` albo token
+bearer, idzie dalej tak jak klucz OpenAI, a adres bazowy z `/v1` na końcu też działa.
 
 Co robi z jednym wywołaniem:
 
-- Obsługuje `/v1/chat/completions` i Responses API, `/v1/responses`, strumieniowo albo nie,
-  oraz `/v1/embeddings` i `/v1/models`, a każdy inny endpoint odrzuca, więc nic, czego nie umie
-  zamaskować, nie wychodzi w postaci, w jakiej przyszło.
+- Obsługuje `/v1/chat/completions`, Responses API, `/v1/responses`, i Messages API Anthropic,
+  `/v1/messages`, strumieniowo albo nie, z `/v1/messages/count_tokens`, oraz `/v1/embeddings`
+  i `/v1/models`, a każdy inny endpoint odrzuca, więc nic, czego nie umie zamaskować, nie
+  wychodzi w postaci, w jakiej przyszło.
+- Przy Messages API maskowane są prompt systemowy, wiadomości, narzędzia i metadane, a notatka
+  o tokenach trafia do promptu systemowego. Blok myślenia (`thinking`) przechodzi tak, jak
+  napisał go model, z zamaskowanego tekstu: dostawca sprawdza jego podpis. Ostatnia kontrola
+  i tak go przeszukuje.
 - Przy Responses API cała rozmowa przychodzi z każdym wywołaniem, tak jak wysyła ją Hermes Agent
   ze `store: false`. Wywołanie, które zostawia ją u dostawcy, przez `previous_response_id` albo
   `conversation`, albo prosi o odpowiedź `background` do odebrania później, przyniosłoby tokeny,
@@ -471,6 +528,10 @@ Co robi z jednym wywołaniem:
 - `--paranoid` maskuje każdą nazwę, którą znajdzie model spaCy, tak jak `mode="paranoid"`.
   Domyślnie pomija to, co znajdzie w angielskim tekście, w kodzie i identyfikatorach, bo prompt,
   narzędzia i logi agenta są pełne angielskich słów, które polski model bierze za nazwy.
+- `--allow NAZWA`, podane tyle razy, ile trzeba, i `--allow-file ŚCIEŻKA`, plik z jedną nazwą
+  w linii, zostawiają czytelne nazwy, które model musi widzieć takimi, jakie są, na przykład
+  imię asystenta i firmę, w imieniu której mówi; tak podana osoba też zostaje czytelna.
+  Reszta promptu jest maskowana jak dotąd.
 - Niczego nie zapisuje na dysku. Narzędzie wysyła całą rozmowę przy każdym wywołaniu, a każde
   wywołanie jest maskowane i przywracane osobno. Z `POLANON_KEY` ustawionym na 64 znaki
   szesnastkowe dana osoba ma jeden token w każdym wywołaniu i w każdym przypadku gramatycznym.
@@ -486,14 +547,14 @@ Co robi z jednym wywołaniem:
 
 Klucze zostają u tego, kto uruchamia bramkę, i są brane wyłącznie ze zmiennych środowiskowych.
 Domyślnie bramka przekazuje dalej klucz narzędzia; `POLANON_UPSTREAM_KEY` wysyła zamiast niego
-inny. Bramka słucha na `127.0.0.1`. Żeby była dostępna z innego komputera, ustaw `--host` i
-`POLANON_GATEWAY_KEY`, który każdy klient musi wtedy wysyłać: bez tego klucza bramka odmawia
+inny, jako token bearer albo, do Anthropic, jako `x-api-key`. Bramka słucha na `127.0.0.1`.
+Żeby była dostępna z innego komputera, ustaw `--host` i `POLANON_GATEWAY_KEY`, który każdy
+klient musi wtedy wysyłać, jako token bearer albo jako `x-api-key`: bez tego klucza bramka odmawia
 startu. Log podaje ścieżkę, status, czas i liczbę zamaskowanych wartości każdego typu, nigdy samą
 wartość.
 
 Nie ma żadnej usługi w chmurze: bramka działa tam, gdzie ją zainstalowano, a kto ją uruchamia,
-odpowiada za ten komputer, swoje klucze i dostawcę, do którego idą wywołania. Na razie bez
-obsługi: Messages API Anthropic.
+odpowiada za ten komputer, swoje klucze i dostawcę, do którego idą wywołania.
 [Model zagrożeń](https://github.com/boromat/polanon/blob/main/docs/THREAT_MODEL.md#the-gateway)
 opisuje, przed czym bramka chroni, a przed czym nie.
 
@@ -503,7 +564,7 @@ Polskie identyfikatory walidowane sumą kontrolną (PESEL, NIP, REGON, dowód os
 płatnicze), numery KRS obok swojej etykiety, adresy e-mail i numery telefonów, adresy i kody
 pocztowe, linki do profilu osoby (LinkedIn, GitHub, GitHub Pages, GitLab, media społecznościowe) aż
 po nazwę użytkownika, IPv4 i IPv6, adresy MAC, numery rejestracyjne pojazdów po etykiecie
-(„nr rej.”), numery VIN, numery paszportów, daty urodzenia, klucze API, tokeny i hasła, polskie
+(„nr rej.”), numery VIN, numery paszportów, numery praw jazdy po etykiecie, daty urodzenia, klucze API, tokeny i hasła, polskie
 imiona razem z nazwiskami oraz nazwy firm rozpoznawane po formie prawnej („Sp. z o.o.”, „S.A.”,
 „Ltd”, „GmbH”). Gdy zamaskowana zostanie osoba albo link do profilu, wszędzie w tym samym tekście
 maskowane jest też samo nazwisko albo sama nazwa użytkownika: „Kowalski” po „Jan Kowalski”,
