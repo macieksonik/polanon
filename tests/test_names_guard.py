@@ -699,3 +699,8 @@ def test_lowercase_dative_surname_parts_are_returned_for_known_values():
 )
 def test_street_names_in_oblique_case_stay_unmasked(text):
     assert _found(text) == []
+
+
+def test_klientka_is_a_role_not_a_standalone_surname():
+    """Klientka is the genitive shape of an -ek surname, and a role in a sentence about a client."""
+    assert _found("Klientka przysłała umowę najmu.") == []

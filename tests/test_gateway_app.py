@@ -625,7 +625,9 @@ async def test_a_streamed_chat_answer_carries_the_mapping_on_the_last_event_only
             "/v1/chat/completions",
             json=chat("Jan Kowalski dzwonił.", stream=True, return_pii_map=True),
         )
-    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: {")]
+    events = [
+        json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: {")
+    ]
     assert len(events) >= 1
     assert all("return_pii_map" not in event for event in events[:-1])
     assert events[-1]["return_pii_map"] == {"<OSOBA_1>": "Jan Kowalski"}
@@ -662,7 +664,9 @@ async def test_a_streamed_responses_answer_carries_the_mapping_on_the_last_event
             "/v1/responses",
             json=responses_body("Jan Kowalski dzwonił.", stream=True, return_pii_map=True),
         )
-    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: {")]
+    events = [
+        json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: {")
+    ]
     assert events[-1]["return_pii_map"] == {"<OSOBA_1>": "Jan Kowalski"}
     assert all("return_pii_map" not in event for event in events[:-1])
 
@@ -689,7 +693,8 @@ async def test_the_log_never_quotes_a_returned_mapping(caplog):
 
 
 def _assert_mask_timing(response, *, expect: bool) -> None:
-    payload = response.json() if response.headers.get("content-type", "").startswith("application/json") else None
+    content_type = response.headers.get("content-type", "")
+    payload = response.json() if content_type.startswith("application/json") else None
     timing_hdr = response.headers.get("server-timing", "")
     if expect:
         assert payload is not None
@@ -709,7 +714,9 @@ async def test_polanon_mask_ms_and_server_timing_only_when_return_pii_map_is_tru
             "/v1/chat/completions",
             json=chat("Jan Kowalski.", return_pii_map=True),
         )
-        off = await gw.post("/v1/chat/completions", json=chat("Jan Kowalski.", return_pii_map=False))
+        off = await gw.post(
+            "/v1/chat/completions", json=chat("Jan Kowalski.", return_pii_map=False)
+        )
         absent = await gw.post("/v1/chat/completions", json=chat("Jan Kowalski."))
     _assert_mask_timing(on, expect=True)
     _assert_mask_timing(off, expect=False)
@@ -740,7 +747,9 @@ async def test_streamed_chat_carries_polanon_mask_ms_on_the_last_event_only():
             "/v1/chat/completions",
             json=chat("Jan Kowalski dzwonił.", stream=True, return_pii_map=True),
         )
-    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: {")]
+    events = [
+        json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: {")
+    ]
     assert isinstance(events[-1].get("polanon_mask_ms"), float)
     assert events[-1]["polanon_mask_ms"] >= 0
     assert all("polanon_mask_ms" not in event for event in events[:-1])
@@ -754,7 +763,9 @@ async def test_streamed_responses_carries_polanon_mask_ms_on_the_last_event_only
             "/v1/responses",
             json=responses_body("Jan Kowalski.", stream=True, return_pii_map=True),
         )
-    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: {")]
+    events = [
+        json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: {")
+    ]
     assert events[-1]["polanon_mask_ms"] >= 0
     assert all("polanon_mask_ms" not in event for event in events[:-1])
 

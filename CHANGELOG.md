@@ -30,8 +30,10 @@ only for a change that breaks something, as CONTRIBUTING.md describes.
 - **Surnames in speech-to-text transcripts.** A lowercase foreign dative on
   `-owi` after a known first name is masked with that name, and its stem is a
   known part of the person. A strong surname in an oblique case is masked when
-  it stands alone or follows one distorted, capitalised first-name token.
-  Street addresses, dotted abbreviations and form labels stay as they are.
+  a distorted, capitalised first-name token stands in front of it. A surname
+  with nothing in front of it stays, so the mapping store still owns lone
+  surnames. Street addresses, dotted abbreviations and form labels stay as
+  they are.
 
 ## [0.3.9] - 2026-11-17
 

@@ -157,9 +157,7 @@ def payload_for_leak_check(payload: Any, *, skip_system: bool = False) -> Any:
     return out
 
 
-def _mask_chat_messages_skip_system(
-    turn: MaskedTurn, messages: list[Any]
-) -> list[dict[str, Any]]:
+def _mask_chat_messages_skip_system(turn: MaskedTurn, messages: list[Any]) -> list[dict[str, Any]]:
     """Mask user, assistant and tool messages only, in order, without settling over the prompt."""
     indexed = [
         (index, message)
@@ -169,7 +167,8 @@ def _mask_chat_messages_skip_system(
     masked_by_index: dict[int, dict[str, Any]] = {}
     if indexed:
         masked = [
-            _without_participant(message) for message in turn.mask_messages([item for _, item in indexed])
+            _without_participant(message)
+            for message in turn.mask_messages([item for _, item in indexed])
         ]
         for (index, _), item in zip(indexed, masked, strict=True):
             masked_by_index[index] = item

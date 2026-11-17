@@ -200,9 +200,7 @@ class Gateway:
         timing_ms = mask_ms if return_pii_map else None
         headers = self._upstream_headers(scope)
         if body.get("stream"):
-            lines = _ChatLines(
-                turn.mapping, return_pii_map=return_pii_map, mask_ms=timing_ms
-            )
+            lines = _ChatLines(turn.mapping, return_pii_map=return_pii_map, mask_ms=timing_ms)
             status = await self._stream(
                 "chat/completions", masked, headers, send, lines, mask_ms=timing_ms
             )
@@ -246,9 +244,7 @@ class Gateway:
         timing_ms = mask_ms if return_pii_map else None
         headers = self._upstream_headers(scope)
         if body.get("stream"):
-            lines = _ResponsesLines(
-                turn.mapping, return_pii_map=return_pii_map, mask_ms=timing_ms
-            )
+            lines = _ResponsesLines(turn.mapping, return_pii_map=return_pii_map, mask_ms=timing_ms)
             status = await self._stream(
                 "responses", masked, headers, send, lines, mask_ms=timing_ms
             )
@@ -543,7 +539,7 @@ def _unreachable(exc: httpx.HTTPError) -> _RefusalError:
 
 
 def _return_pii_map_flag(body: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
-    """Take ``return_pii_map`` off the request and say whether the answer should carry the mapping."""
+    """Take ``return_pii_map`` off the request and say whether the answer carries the mapping."""
     if "return_pii_map" not in body:
         return dict(body), False
     flag = body["return_pii_map"]
@@ -753,9 +749,7 @@ async def _send_json(
     await send({"type": "http.response.body", "body": body})
 
 
-async def _send_raw(
-    send: Send, response: httpx.Response, *, mask_ms: float | None = None
-) -> None:
+async def _send_raw(send: Send, response: httpx.Response, *, mask_ms: float | None = None) -> None:
     """Pass the provider's answer on as it came: an error, a list of models or embeddings."""
     body = response.content
     headers = [
