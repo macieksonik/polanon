@@ -412,11 +412,6 @@ def test_arguments_given_as_a_value_and_old_function_calls_are_masked():
             "Uczestnik: Konieczny Jan, ur. 1990",
             "<OSOBA_2> spóźnił się.",
         ),
-        (
-            "Kowalski dzwonił wczoraj.",
-            "Jan Kowalski prosi o fakturę.",
-            "<OSOBA_2> dzwonił wczoraj.",
-        ),
     ],
 )
 def test_a_value_found_in_a_later_message_is_masked_in_an_earlier_one(earlier, later, masked):
@@ -427,10 +422,21 @@ def test_a_value_found_in_a_later_message_is_masked_in_an_earlier_one(earlier, l
     assert first["content"] == masked
 
 
+def test_a_capitalised_surname_is_already_masked_before_the_full_name_arrives():
+    """Kowalski in title case is a strong surname, so it does not wait for the full name."""
+    earlier = "Kowalski dzwonił wczoraj."
+    assert anonymizer.turn().mask(earlier) == "<OSOBA_1> dzwonił wczoraj."
+    first, _ = anonymizer.turn().mask_messages(
+        [
+            {"role": "user", "content": earlier},
+            {"role": "user", "content": "Jan Kowalski prosi o fakturę."},
+        ]
+    )
+    assert first["content"] == "<OSOBA_1> dzwonił wczoraj."
+
+
 def test_a_value_found_late_in_one_message_is_masked_where_it_came_earlier_in_it():
-    """An agent's tool returned JSON with a person's name first in a list of tags, where nothing
-    recognised it, and then in a sentence that did. The tags went out in the clear, and the
-    gateway's last check, finding them, refused the call: the agent got an error, three times."""
+    """A surname in a tool result is masked where it stands, in a tag as well as in a sentence."""
     note = "Jan Kowalski prosi o fakturę."
     result = json.dumps({"tags": ["pilne", "Kowalski"], "note": note}, ensure_ascii=False)
     messages = [

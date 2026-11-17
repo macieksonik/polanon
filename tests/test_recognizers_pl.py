@@ -82,7 +82,7 @@ def test_regex_guard_finds_valid_and_skips_invalid():
     assert ("NIP", "526-000-00-05") in found
     assert ("EMAIL", "jan@example.com") in found
     assert ("PHONE", "600 100 200") in found
-    assert ("PESEL", "50810112350") not in found  # no label, and the checksum fails
+    assert ("PESEL", "50810112350") not in found  # a full stop in the address ends the sentence
 
 
 def test_regex_guard_respects_enabled_set():
@@ -863,6 +863,16 @@ def test_the_same_numbers_without_their_label_are_left_alone(text, enabled):
 )
 def test_eleven_digits_without_a_pesel_label_are_a_pesel_only_with_its_checksum(text, expected):
     assert masked(text, {"PESEL"}) == expected
+
+
+def test_eleven_digits_in_a_sentence_that_says_pesel_are_masked_despite_the_checksum():
+    """Words may sit between the word PESEL and the number, and a wrong check digit still counts."""
+    text = "Nie, ale numer tego, yyy, numer PESEL tego Kalinowskiego to 72020201222."
+    assert masked(text, {"PESEL"}) == (
+        "Nie, ale numer tego, yyy, numer PESEL tego Kalinowskiego to <PESEL_1>."
+    )
+    later = "PESEL jest potrzebny. Zamówienie 72020201222 jest w drodze."
+    assert masked(later, {"PESEL"}) == "PESEL jest potrzebny. Zamówienie 72020201222 jest w drodze."
 
 
 def test_split_number_with_a_pesel_checksum_but_no_label_is_not_a_pesel():

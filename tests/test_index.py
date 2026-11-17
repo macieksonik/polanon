@@ -349,18 +349,22 @@ def indexed():
 
 
 @pytest.mark.parametrize(
-    ("question", "masked"),
+    ("question", "masked", "without_store"),
     [
-        ("Co podpisał Kowalczyk?", "Co podpisał {}?"),
-        ("Umowy Kowalczyka z 2025 roku", "Umowy {} z 2025 roku"),
-        ("Czy Kowalczykiem ktoś się zajął?", "Czy {} ktoś się zajął?"),
+        ("Co podpisał Kowalczyk?", "Co podpisał {}?", "Co podpisał Kowalczyk?"),
+        ("Umowy Kowalczyka z 2025 roku", "Umowy {} z 2025 roku", "Umowy {} z 2025 roku"),
+        ("Czy Kowalczykiem ktoś się zajął?", "Czy {} ktoś się zajął?", "Czy {} ktoś się zajął?"),
     ],
 )
-def test_a_surname_alone_in_a_question_gets_the_token_the_store_holds(question, masked):
-    """No rule reads a lone surname: without the store it went out and found nothing."""
+def test_a_surname_alone_in_a_question_gets_the_token_the_store_holds(
+    question, masked, without_store
+):
+    """A weak nominative still needs the store. A capitalised strong form is masked on its own."""
     anonymizer, store, surname = indexed()
     assert anonymizer.mask_query(question, store).anonymized == masked.format(surname)
-    assert anonymizer.mask_query(question, store, lookup=False).anonymized == question
+    assert anonymizer.mask_query(question, store, lookup=False).anonymized == without_store.format(
+        surname
+    )
 
 
 @pytest.mark.parametrize(
@@ -400,16 +404,19 @@ def test_a_surname_alone_in_another_document_is_masked_through_the_store():
     assert alone.texts == ["Kowalczyk dzwonił."]
 
 
-@pytest.mark.parametrize(
-    "question",
-    [
-        "co wiemy o kowalczyku",  # a lowercase word alone is never read as a name
-        "Kowalczykowska pisała",  # another word that starts the same way
-    ],
-)
-def test_the_store_is_not_asked_about_words_that_are_no_names_of_its_values(question):
+def test_a_lowercase_word_alone_is_not_read_as_a_stored_name():
     anonymizer, store, _ = indexed()
+    question = "co wiemy o kowalczyku"
     assert anonymizer.mask_query(question, store).anonymized == question
+
+
+def test_a_different_surname_that_starts_the_same_way_keeps_its_own_token():
+    """Kowalczykowska is its own surname, not the stored Kowalczyk."""
+    anonymizer, store, surname = indexed()
+    masked = anonymizer.mask_query("Kowalczykowska pisała", store)
+    assert surname not in masked.anonymized
+    assert masked.anonymized != "Kowalczykowska pisała"
+    assert list(masked.mapping.values()) == ["Kowalczykowska"]
 
 
 def test_a_title_in_front_of_a_stored_name_stays_in_the_text():
