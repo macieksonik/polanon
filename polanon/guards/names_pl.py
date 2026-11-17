@@ -447,11 +447,6 @@ _NOMINATIVE_TAGS = frozenset({("m", "nom")} | {("f", case) for case in CASES})
 #: The readings a first name has in a list or a form, where it stands in the nominative.
 _NOMINATIVE = frozenset({("m", "nom"), ("f", "nom")})
 
-#: Cases a surname must show to be masked without a first name or an address beside it.
-_OBLIQUE_CASES = frozenset(
-    (gender, case) for gender in "mf" for case in ("gen", "dat", "acc", "ins", "loc")
-)
-
 _WORD = re.compile(r"[^\W\d_]+(?:-[^\W\d_]+)*")
 _SPACE = re.compile(r"[ \t\u00a0]+")
 _SPACE_AFTER_ABBREVIATION = re.compile(r"\.?[ \t\u00a0]+")
@@ -809,16 +804,21 @@ def _distorted_first_name_before(
     return None
 
 
+#: Title case does not make these roles a surname. "Klientka" has the genitive shape of an -ek
+#: name. Kept here, not on `_NOT_SURNAMES`, which the pseudonym scheme pins.
+_NOT_STANDALONE_SURNAME = frozenset({"klientka"})
+
+
 def _standalone_oblique_surname(
     text: str, words: list[_Word], index: int, taken: int
 ) -> tuple[int, int, int | None, bool] | None:
-    """A strong oblique surname with an STT-mangled first name before it.
+    """A capitalised strong surname, with an optional STT-mangled first name before it.
 
-    A surname with nothing in front of it stays, so a lone surname is still found only through
-    the mapping store.
+    A lowercase word with nothing in front of it stays. A line of capitals says nothing about
+    names, and "Klientka" stays a role.
     """
     word = words[index]
-    if not _capitalised(word.text) or _is_title(word):
+    if not _capitalised(word.text) or _is_title(word) or word.key in _NOT_STANDALONE_SURNAME:
         return None
     surname = surname_reading(word.text)
     if surname is None or not surname.strong or surname.common:
@@ -827,14 +827,12 @@ def _standalone_oblique_surname(
         return None
     if _in_a_dotted_abbreviation(text, words, index):
         return None
-    if _opens_a_labelled_field(text, words, index):
-        return None
-    if not (surname.tags & _OBLIQUE_CASES):
+    if _opens_a_labelled_field(text, words, index) or _labelled(text, words, index):
         return None
     distorted = _distorted_first_name_before(text, words, index, taken, surname.tags)
-    if distorted is None:
-        return None
-    return distorted, index, None, False
+    if distorted is not None:
+        return distorted, index, None, False
+    return index, index, None, False
 
 
 def _agrees(surname: frozenset[Tag], wanted: frozenset[Tag]) -> bool:

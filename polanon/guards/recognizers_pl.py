@@ -413,6 +413,9 @@ _PESEL_LABEL = re.compile(
     r"(?i)(?:pesel\w*|(?:nr|numer\w*)\.?\s+ubezpieczenia(?:\s+społeczn\w*)?)"
     r"(?:\s+(?:nr|numer|to))?\.?\s*[:(-]?\s*$"
 )
+#: The word PESEL anywhere in a sentence, not only pressed against the digits.
+_PESEL_WORD = re.compile(r"(?i)(?<![^\W\d_])pesel\w*(?![^\W\d_])")
+_SENTENCE_BOUNDARY = ".!?\r\n"
 #: Words that end right before a NIP: "NIP:", "nr NIP", "NIP UE". A label starts a word.
 _NIP_LABEL = re.compile(r"(?i)(?<![^\W\d_])nip(?:\s+(?:ue|nr|numer|to))?\.?\s*[:(-]?\s*$")
 #: Words that end right before a payment card's number: "numer karty kredytowej", "nr karty:",
@@ -799,15 +802,32 @@ def _locate_passport(text: str, match: re.Match[str]) -> list[tuple[int, int]]:
 
 
 def _locate_pesel(text: str, match: re.Match[str]) -> list[tuple[int, int]]:
-    """Return a PESEL: right after a PESEL label always, elsewhere only whole and checksum-valid.
+    """Return a PESEL: after its label, with a valid checksum, or in a sentence that says PESEL.
 
     Eleven digits right after "PESEL" are someone's number even with a typo in them, a wrong check
-    digit or day 99, and such a number went out in clear. Without the label the checksum decides,
-    and a PESEL in parts needs the label, since a date-prefixed order number has that shape.
+    digit or day 99. The same holds for any eleven digits in that sentence when words sit between
+    the word and the number. Without the word in the sentence the checksum decides, and a PESEL in
+    parts needs the label or the word, since a date-prefixed order number has that shape.
     """
-    if _follows(_PESEL_LABEL, text, match):
+    if _follows(_PESEL_LABEL, text, match) or _pesel_named_in_sentence(text, match):
         return [match.span()]
     return [match.span()] if match.group().isdigit() and is_valid_pesel(match.group()) else []
+
+
+def _pesel_named_in_sentence(text: str, match: re.Match[str]) -> bool:
+    """Return whether the word PESEL stands in the same sentence as `match`."""
+    start = match.start()
+    left = 0
+    for index in range(start - 1, -1, -1):
+        if text[index] in _SENTENCE_BOUNDARY:
+            left = index + 1
+            break
+    right = len(text)
+    for index in range(match.end(), len(text)):
+        if text[index] in _SENTENCE_BOUNDARY:
+            right = index
+            break
+    return _PESEL_WORD.search(text, left, right) is not None
 
 
 #: Words that introduce a bank account: "konto", "nr konta", "rachunek bankowy", "IBAN".

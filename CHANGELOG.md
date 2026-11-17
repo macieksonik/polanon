@@ -30,10 +30,29 @@ only for a change that breaks something, as CONTRIBUTING.md describes.
 - **Surnames in speech-to-text transcripts.** A lowercase foreign dative on
   `-owi` after a known first name is masked with that name, and its stem is a
   known part of the person. A strong surname in an oblique case is masked when
-  a distorted, capitalised first-name token stands in front of it. A surname
-  with nothing in front of it stays, so the mapping store still owns lone
-  surnames. Street addresses, dotted abbreviations and form labels stay as
-  they are.
+  a distorted, capitalised first-name token stands in front of it. Street
+  addresses, dotted abbreviations and form labels stay as they are.
+
+## [0.3.9.1] - 2026-11-17
+
+A capitalised surname the rules already read as a strong one is masked on its own, and eleven
+digits in a sentence that says PESEL are a PESEL even when the checksum fails. Nothing else about
+0.3.9 changes, so the fork's version adds a fourth number.
+
+### Fixed
+
+- **A capitalised strong surname with no first name beside it.** Speech-to-text writes
+  "Kalinowskiego" with a capital, and the surname pattern already reads that word, but a surname
+  with nothing in front of it went out in clear. A word in title case that the pattern reads as a
+  strong surname is now masked on its own. A lowercase word, a line written in capitals, a street,
+  a dotted abbreviation and a form label stay as they were. "Klientka" stays a role: it has the
+  shape of an -ek genitive, and that exclusion is not added to the surname list the pseudonym
+  scheme pins.
+- **Eleven digits in a sentence that says PESEL.** "numer PESEL tego Kalinowskiego to
+  72020201222" puts words between the label and the number, and the checksum fails, so the number
+  went out. Any eleven digits in the same sentence as the word PESEL are masked, checksum or not.
+  A sentence boundary is a full stop, a question mark, an exclamation mark or a new line, so a
+  number in another sentence is still decided by the checksum.
 
 ## [0.3.9] - 2026-11-17
 
