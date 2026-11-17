@@ -27,6 +27,160 @@ only for a change that breaks something, as CONTRIBUTING.md describes.
 
 ### Fixed
 
+- **Surnames in speech-to-text transcripts.** A lowercase foreign dative on
+  `-owi` after a known first name is masked with that name, and its stem is a
+  known part of the person. A strong surname in an oblique case is masked when
+  a distorted, capitalised first-name token stands in front of it. A surname
+  with nothing in front of it stays, so the mapping store still owns lone
+  surnames. Street addresses, dotted abbreviations and form labels stay as
+  they are.
+
+## [0.3.9] - 2026-11-17
+
+What public Polish data showed polanon missing, fixed, and a benchmark that keeps measuring on
+data polanon was never tuned on. On 1,000 Polish texts of ai4privacy's OpenPII that no fix was
+made from, the values masked whole with `pl_core_news_md` rise from 63.2% in 0.3.8 to 71.0%,
+with 435 spans outside them instead of 432; Presidio, set up the same way, masks 65.8% with
+2,641. Driving licence numbers are a new type, e-mail addresses, streets and identifiers with a
+typo after their label are masked whole, and 630 first names of the PESEL register are known
+without a model. Nothing that worked before stops working, so this is a patch release, as
+CONTRIBUTING.md describes.
+
+### Added
+
+- **Driving licence numbers, after their label**, as the new type `DRIVING_LICENCE` with the
+  token `<PRAWO_JAZDY_1>`: "Numer prawa jazdy: 01234/15/1234", "driver's license number:
+  D1234-5678-9012". No rule knew them, and an HR record or a rental agreement sent them in
+  clear. The shape differs by country, so the label is what makes a run of letters and digits
+  one, and it must hold a digit: "prawo jazdy kategorii B" names no number. The number may
+  stand in brackets or after a dash, after "kat. B" or a remark such as "(jeśli dotyczy)",
+  and a tachograph's driver card, "karta kierowcy", is read the same way.
+- **First names from the PESEL register**: the 630 names borne by at least 1 000 people in
+  Poland that the hand-written lists lacked, from the register's lists of 22 January 2025 that
+  the Ministry of Digital Affairs publishes on dane.gov.pl under CC0. The names polanon knows
+  without a language model now cover about 98% of women and 96% of men in the register, up
+  from 87% and 86%: Kazimiera, Sylwester, Marlena, and the Ukrainian and Belarusian names
+  Poland's residents bear, Oleksandr, Tetiana, Nataliia, written as the register writes them.
+  A form that is also an ordinary word, "inna", "melisa", "sylwestra", "idę", is treated as
+  "Kalina" is, and Max, Mark, Frank, Roger, Pascal, Christian and Aurora are left out as the
+  English words an agent's tools and logs are full of. Without the model, people found whole in
+  the training part of CLARIN-PL's KPWr rise from 39% to 45%, and in the agent benchmark
+  "Erik Holm" opening an English sentence no longer leaks: 2 of 243 values reach the model with
+  `pl_core_news_md`, down from 3.
+- **A benchmark on public Polish data polanon was never tuned on**, `benchmarks/run_external.py`.
+  It downloads the Polish rows of ai4privacy's OpenPII (CC-BY-4.0), the test part of CLARIN-PL's
+  KPWr (CC-BY-3.0) and GUS's TERYT street catalogue (CC-BY-4.0) on first use, keeps none of them
+  in the repository, and scores polanon, and Presidio if asked, as `benchmarks/run.py` does.
+  OpenPII is shuffled with a fixed seed: the first 1,000 Polish texts were read to find what the
+  fixes above fix, the next 1,000 never were. On those, with `pl_core_news_md`, polanon masks 71%
+  of 5,255 values whole with 435 spans outside them, and Presidio 66% with 2,641; on KPWr both
+  find 90% of people.
+
+### Changed
+
+- **The README shows polanon at work and how it compares.** The terminal demo, now an animated
+  SVG drawn by `benchmarks/terminal_demo.py`, shows the gateway in Docker next to the library
+  and ends on the scores against Presidio. `benchmarks/comparison_chart.py` draws those scores
+  as a chart under "How it compares", and a button at the top opens the demo that runs polanon
+  in the browser, with nothing sent anywhere.
+
+### Fixed
+
+- **An e-mail address with letters from outside Polish is masked whole.** Only Polish letters
+  were accepted next to the Latin ones, so `françois.dupont@example.com` was masked from its "ç"
+  on and "franç" went to the model; a German, Czech or Scandinavian name in an address lost the
+  same way, and one made of such letters alone was not masked at all. Every letter of any
+  alphabet now counts, in the local part, the domain and the bracketed `[at]` form. Found by
+  measuring on the Polish rows of ai4privacy's OpenPII, where 24 of 537 addresses leaked so.
+- **A NIP, ID card or payment card number right after its label is masked with a typo in it**,
+  as a PESEL already was. Without the label the checksum decides, and a number one keystroke
+  off its real value after "NIP:", "numer dowodu osobistego:" or "numer karty kredytowej" went
+  out in clear. "Numer ubezpieczenia społecznego", which a translated form writes for the PESEL,
+  is read as a PESEL label too. The same numbers without a label are left as they were.
+- **A street with "nr" before its house number, and a street in form fields, are masked.**
+  "przy ulicy Długiej nr 36" or "al. Mickiewicza numer 228": the "nr" ended the street, and the
+  street with its number went out in clear. A form or a CRM export writes the street and the
+  number in fields of their own, "Ulica: Kwiatowa", "Numer domu: 8A", "house number: 5", with
+  no "ul." and no postcode next to them; such a field is masked once it has its colon, so
+  "ulica handlowa nr 1" in a sentence stays as it is.
+- **A name with initials is one person**: "George W. Bush" went out as `<OSOBA_1> <OSOBA_2>`
+  and "C. Alexander i S. Ishikawa" as four people, since one detector stopped at an initial and
+  another started after it. Nothing leaked, but the model read two people where there was one.
+  Two person spans one space apart are now joined when the space follows an initial or comes
+  right before one; two names side by side without an initial stay two.
+- **Streets as the TERYT register names them are masked whole.** Every one of the 50 449
+  street names in GUS's TERYT catalogue of 16 November 2026, written with its house number,
+  was run through the rules, and 91.4% came out masked whole. Missed were numbers in a name
+  ("ul. 1000-lecia", "10-go Pułku Piechoty", "83. Pułku Strzelców"), initials ("ul. A.
+  Słonimskiego"), titles beyond the usual few ("inż.", "mgr", "adw.", "kmdr"), small words and
+  years ("Nad Stawem", "Bohaterów Wojny 1920 r."), a name in quotes or opened by "im.", and
+  the kinds "Wybrzeże", "Nabrzeże", "Trakt", "Pasaż", "Zaułek" and "bulw.". Now 95.3% are,
+  98.0% of those with "ul.", with no new span on any other benchmark.
+
+## [0.3.8] - 2026-11-17
+
+The gateway as a Docker image, for a tool that is already written: one command, and the tool
+gets a base URL and a key. The library is the same as in 0.3.7, so this is a patch release, as
+CONTRIBUTING.md describes. `docker run ghcr.io/boromat/polanon-gateway:0.3` starts the gateway
+with the spaCy model inside, and the README now opens with it and with the library side by side.
+
+### Added
+
+- **The gateway as a Docker image**, `ghcr.io/boromat/polanon-gateway`, with the spaCy model
+  inside, for Intel and ARM machines, published with every release and tagged with the version,
+  the minor version and `latest`. In the container the gateway listens on every interface, so it
+  starts only with `POLANON_GATEWAY_KEY`; it runs as a user without privileges and reports its
+  health to Docker. CI builds the image and tries it on every change.
+- **Two ways to start, at the top of the README**: the gateway in Docker for a tool that is
+  already written, Claude Code among them, and the library for one's own code.
+
+## [0.3.7] - 2026-11-17
+
+Anthropic's Messages API in the gateway, names the operator leaves readable, an account number
+that no longer comes out half a card, and a name a tool result gives late that is masked where
+it came earlier too; nothing that worked before stops working, so this is a patch release, as
+CONTRIBUTING.md describes. `polanon-gateway` now masks `/v1/messages` too, streamed or not, for
+an app on Anthropic's SDK or Claude Code, `--allow` and `--allow-file` leave the assistant's
+own name and its company readable while the rest of the prompt is masked, and an agent's call
+the last check refused for such a name now goes out masked.
+
+### Added
+
+- **The gateway speaks Anthropic's Messages API.** `polanon-gateway --upstream
+  https://api.anthropic.com/v1` serves `/v1/messages`, streamed or not, and
+  `/v1/messages/count_tokens`, for an app on Anthropic's SDK or Claude Code pointed at it. The
+  system prompt, the messages, the tools with their `input_schema` and the metadata are masked;
+  a tool's input comes back restored, in a stream too, and the note about tokens joins the system
+  prompt. A thinking block passes as the model wrote it both ways, since the provider checks its
+  signature, and the last check still searches it. The client's key passes on as it came, as
+  `x-api-key` or as a bearer token; the operator's `POLANON_UPSTREAM_KEY` goes as `x-api-key`
+  instead, and a gateway key is accepted either way and never sent on. A base URL ending in
+  `/v1`, the one an OpenAI client is given, works too, although Anthropic's SDKs add `/v1`
+  themselves and asked for `/v1/v1/messages`. `mask_messages_request`,
+  `restore_messages_response` and `MessagesStream` in `polanon.gateway.payloads` do it without
+  a server.
+- **`polanon-gateway --allow NAME` and `--allow-file PATH`** leave readable the names the model
+  has to see as they are: an assistant that speaks for a company has its own name and the
+  company's in its prompt, and masked they made it introduce itself as a token. Unlike the
+  well-known names, the operator's own release a person the name guard found too; a denylist
+  entry stays masked, and everything else in the prompt is masked as before. The banner counts
+  them. Asked for in [#30](https://github.com/boromat/polanon/pull/30), in place of sending the
+  whole system prompt unmasked.
+
+### Fixed
+
+- **A value recognised late in a message is masked where it came earlier in it too.** An
+  agent's tool returned JSON naming a person first in a list of tags, where nothing recognised
+  the name on its own, and then in a sentence that did. The tags had been masked before the
+  name was known, so the gateway's last check found it there and refused the call, and the
+  agent got an error three times; a surname alone in such a place, which the check does not
+  look for, would have gone out. `MaskedTurn.mask_messages()` now masks a message once more
+  when the mapping grew while it was masked, not only after, the Responses API's input items
+  too, and `mask_data()` does the same for a whole value. The guards remember what they found
+  in a text, so the second look costs little more than the rules.
+- **A path the gateway refuses is named in its 404 as the client sent it**, with its `/v1`, not
+  as the gateway read it: a client that asked for `/v1/v1/messages` was told the gateway does
+  not serve `/v1/messages`, the one path it had just been told it serves.
 - **An account number with a typo is masked whole as an IBAN, and never as a card.** A request
   typed "konto PL61 1090 1014 0000 0712 1921 2974", a digit or two off a real account: the IBAN
   failed its checksum, and sixteen digits from its middle passed Luhn, so they were masked as a

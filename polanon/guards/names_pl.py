@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from polanon.guards import _pesel_names
 from polanon.guards.base import Guard
 from polanon.types import Span
 
@@ -265,6 +266,9 @@ def _index(entries: list[tuple[str, dict[str, set[str]]]]) -> dict[str, frozense
 NAME_FORMS: dict[str, frozenset[Tag]] = _index(
     [("m", decline_masculine(name.lower())) for name in _MALE_NAMES]
     + [("f", decline_feminine(name.lower())) for name in _FEMALE_NAMES]
+    # The rest of the names a thousand people or more bear in the PESEL register.
+    + [("m", decline_masculine(name.lower())) for name in _words(_pesel_names.MALE)]
+    + [("f", decline_feminine(name.lower())) for name in _words(_pesel_names.FEMALE)]
 )
 
 #: Everyday nouns in the dative on ``-owi``, not people after a first name: "dałem Jerzemu szefowi".
@@ -293,7 +297,7 @@ AMBIGUOUS_FORMS = frozenset(
         rozy ryska rysku ula ule ulu wiktoria witka
         """
     )
-)
+) | frozenset(_words(_pesel_names.AMBIGUOUS))
 
 _SURNAME_FORMS: dict[str, frozenset[Tag]] = _index(
     [("m", decline_masculine(name.lower())) for name in _NOUN_SURNAMES]
@@ -540,18 +544,20 @@ def person_name_parts(name: str, *, needs_first_name: bool = False) -> list[str]
             continue
         if len(bare) < 3 or not _WORD.fullmatch(bare):
             continue
-        if has_first_name and len(bare) >= 5 and bare.islower():
-            if (
-                key not in _COMMON_DATIVE_NOUNS
-                and key not in NAME_FORMS
-                and key not in HONORIFICS
-                and key not in _NOT_NAMES
-                and key not in _ROLES
-                and not is_common_adjective(bare)
-                and (surname_reading(bare) is not None or key.endswith("owi"))
-            ):
-                parts.append(bare)
-                continue
+        if (
+            has_first_name
+            and len(bare) >= 5
+            and bare.islower()
+            and key not in _COMMON_DATIVE_NOUNS
+            and key not in NAME_FORMS
+            and key not in HONORIFICS
+            and key not in _NOT_NAMES
+            and key not in _ROLES
+            and not is_common_adjective(bare)
+            and (surname_reading(bare) is not None or key.endswith("owi"))
+        ):
+            parts.append(bare)
+            continue
         if not _name_shaped(bare):
             continue
         if key in HONORIFICS or key in _ABBREVIATIONS or key in _NOT_NAMES or key in _ROLES:
@@ -723,7 +729,7 @@ def _one_edit_apart(left: str, right: str) -> bool:
     if abs(len(left) - len(right)) > 1:
         return False
     if len(left) == len(right):
-        return sum(a != b for a, b in zip(left, right)) <= 1
+        return sum(a != b for a, b in zip(left, right, strict=False)) <= 1
     shorter, longer = (left, right) if len(left) < len(right) else (right, left)
     index = 0
     while index < len(shorter) and shorter[index] == longer[index]:
@@ -732,16 +738,14 @@ def _one_edit_apart(left: str, right: str) -> bool:
 
 
 def _lowercase_dative_surname(candidate: _Word, tags: frozenset[Tag]) -> bool:
-    """A lowercase ``-owi`` word after a trusted first name, as STT often writes a foreign surname."""
+    """A lowercase ``-owi`` after a trusted first name, as STT writes a foreign surname."""
     if ("m", "dat") not in tags or not candidate.text.islower():
         return False
     if len(candidate.text) < 5 or not candidate.key.endswith("owi"):
         return False
     if _is_title(candidate) or candidate.key in NAME_FORMS:
         return False
-    if is_common_adjective(candidate.text) or candidate.key in _COMMON_DATIVE_NOUNS:
-        return False
-    return True
+    return not (is_common_adjective(candidate.text) or candidate.key in _COMMON_DATIVE_NOUNS)
 
 
 def _surname_in_address_context(text: str, words: list[_Word], index: int) -> bool:
@@ -754,9 +758,7 @@ def _surname_in_address_context(text: str, words: list[_Word], index: int) -> bo
     word = words[index]
     following = _neighbour(text, words, index, 1)
     after_text = text[word.end : words[following].start if following is not None else len(text)]
-    if re.match(r"[ \t\u00a0]*\d", after_text):
-        return True
-    return False
+    return bool(re.match(r"[ \t\u00a0]*\d", after_text))
 
 
 def _in_a_dotted_abbreviation(text: str, words: list[_Word], index: int) -> bool:
@@ -798,7 +800,11 @@ def _distorted_first_name_before(
             continue
         if _one_edit_apart(candidate.key, form):
             return preceding
-        if len(form) >= 5 and candidate.key.startswith(form[:5]) and abs(len(candidate.key) - len(form)) <= 2:
+        if (
+            len(form) >= 5
+            and candidate.key.startswith(form[:5])
+            and abs(len(candidate.key) - len(form)) <= 2
+        ):
             return preceding
     return None
 
@@ -806,7 +812,11 @@ def _distorted_first_name_before(
 def _standalone_oblique_surname(
     text: str, words: list[_Word], index: int, taken: int
 ) -> tuple[int, int, int | None, bool] | None:
-    """A strong capitalised surname in an oblique case, with an optional STT-mangled first name before it."""
+    """A strong oblique surname with an STT-mangled first name before it.
+
+    A surname with nothing in front of it stays, so a lone surname is still found only through
+    the mapping store.
+    """
     word = words[index]
     if not _capitalised(word.text) or _is_title(word):
         return None
@@ -822,9 +832,9 @@ def _standalone_oblique_surname(
     if not (surname.tags & _OBLIQUE_CASES):
         return None
     distorted = _distorted_first_name_before(text, words, index, taken, surname.tags)
-    if distorted is not None:
-        return distorted, index, None, False
-    return index, index, None, True
+    if distorted is None:
+        return None
+    return distorted, index, None, False
 
 
 def _agrees(surname: frozenset[Tag], wanted: frozenset[Tag]) -> bool:
@@ -1030,9 +1040,9 @@ def _person_at(
         if found is not None:
             return (*found, None, False)
     if not _is_title(word):
-        found = _standalone_oblique_surname(text, words, index, taken)
-        if found is not None:
-            return found
+        oblique = _standalone_oblique_surname(text, words, index, taken)
+        if oblique is not None:
+            return oblique
     return None
 
 
