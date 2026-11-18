@@ -10,10 +10,9 @@
 your network, send only tokens to the model, and put the originals back into its answer, even
 while it streams. Pure Python: the standard library is the whole core.
 
-Featured in [unknowNews](https://mrugalski.pl/nl/wu/ojVtmS0K0CI892763N1hEauM1A), Jakub
-Mrugalski's weekly newsletter for people in IT, on 13 November 2026.
+[Written about us](https://github.com/boromat/polanon#written-about)
 
-<p align="center"><a href="https://boromat.github.io/en/demo/"><img src="https://raw.githubusercontent.com/boromat/polanon/main/docs/try-demo.svg" alt="Try polanon in your browser"></a></p>
+<p align="center"><a href="https://boromat.pl/en/demo/"><img src="https://raw.githubusercontent.com/boromat/polanon/main/docs/try-demo.svg" alt="Try polanon in your browser"></a></p>
 
 **Without writing code**, with the gateway in Docker. Claude Code, n8n, Open WebUI, LibreChat,
 Hermes Agent and any other tool that speaks the OpenAI or Anthropic API keep working as they did,
@@ -23,7 +22,7 @@ and every call is masked before it leaves:
 export POLANON_UPSTREAM_KEY=sk-...                 # your provider's key
 export POLANON_GATEWAY_KEY=$(openssl rand -hex 16)  # the key your tools will send
 docker run --rm -p 127.0.0.1:8787:8787 -e POLANON_UPSTREAM_KEY -e POLANON_GATEWAY_KEY \
-    ghcr.io/boromat/polanon-gateway:0.3 --upstream https://api.openai.com/v1
+    ghcr.io/boromat/polanon-gateway:0.4 --upstream https://api.openai.com/v1
 ```
 
 Then give the tool `http://127.0.0.1:8787/v1` as its base URL and the value of
@@ -36,7 +35,7 @@ tool, the gateway without Docker, and what it does with a call are in
 
 **In Python**, in your own code: mask a text, send it, restore the answer.
 
-![polanon in a terminal: masking a Polish text in Python and restoring the answer, the gateway in Docker in front of a tool, and the scores against Presidio](https://raw.githubusercontent.com/boromat/polanon/main/docs/demo.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/boromat/polanon/main/docs/demo.svg" alt="polanon in a terminal: masking a Polish text in Python and restoring the answer, the gateway in Docker in front of a tool, and the scores against Presidio"></p>
 
 ```bash
 pip install polanon
@@ -84,7 +83,7 @@ Plusgiro and sort codes, international phone numbers, street addresses and postc
 
 ## How it compares
 
-![polanon and Presidio on Polish data polanon was never tuned on: values masked whole, false alarms, by kind of value, and people in real Polish text](https://raw.githubusercontent.com/boromat/polanon/main/docs/comparison.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/boromat/polanon/main/docs/comparison.svg" alt="polanon and Presidio on Polish data polanon was never tuned on: values masked whole, false alarms, by kind of value, and people in real Polish text"></p>
 
 |  | polanon | [Presidio](https://github.com/data-privacy-stack/presidio) | [pii-veil](https://pypi.org/project/pii-veil/) | [piimask](https://pypi.org/project/piimask/) |
 |---|---|---|---|---|
@@ -92,7 +91,7 @@ Plusgiro and sort codes, international phone numbers, street addresses and postc
 | Polish identifiers with a checksum | PESEL, NIP, REGON, ID card, IBAN, payment cards | PESEL; IBAN and payment cards in general | PESEL, NIP, REGON, IBAN, payment cards; ID card and passport by pattern only | None; IBAN and payment cards in general |
 | Polish names in every grammatical case | For listed first names and the surnames that agree with them, without a language model; spaCy adds the rest | With a Polish spaCy model and its `persName` label mapped | Not detected | Not detected; its README suggests adding an NER model |
 | What the core needs | Nothing beyond the standard library | spaCy, numpy, pydantic and a few more; a language model only for names and places | pii-core and typer | Nothing beyond the standard library |
-| On Polish data neither was tuned on ([OpenPII, KPWr](https://github.com/boromat/polanon/blob/main/benchmarks/README.md#on-data-polanon-was-never-tuned-on)) | 71% of 5,255 values masked whole with `pl_core_news_md`, 435 false alarms; 90% of people in real text | 66%, 2,641 false alarms; 90% of people (presidio-analyzer 2.2.366, same model) | Not measured | Not measured |
+| On Polish data neither was tuned on ([OpenPII, KPWr](https://github.com/boromat/polanon/blob/main/benchmarks/README.md#on-data-polanon-was-never-tuned-on)) | 71% of 5,255 values masked whole with `pl_core_news_md`, 306 false alarms; 90% of people in real text | 66%, 2,641 false alarms; 90% of people (presidio-analyzer 2.2.366, same model) | Not measured | Not measured |
 | On polanon's own [sample documents](https://github.com/boromat/polanon/blob/main/benchmarks/README.md), tuned on | 98% fully masked with `pl_core_news_md`, 86% with rules alone | 67% with the same model | Not measured | Not measured |
 | License | MIT | MIT | Apache-2.0 | MIT |
 
@@ -101,7 +100,7 @@ November 2026. Only Presidio was run, with the scripts in `benchmarks/`. polanon
 documents are not neutral ground: its author wrote them and tuned its rules on them, and Presidio
 had only the Polish model, also for the three invoices from abroad. The Polish rows of ai4privacy's
 OpenPII and CLARIN-PL's KPWr are: polanon was never tuned on the parts measured, and on them the
-gap narrows to five points and six times fewer false alarms, with a tie on people, where the same
+gap narrows to five points and eight times fewer false alarms, with a tie on people, where the same
 spaCy model does the work. Presidio wins on random codes written without a label, which it reads
 with low-score patterns that also mark product codes and order numbers. Each has its place:
 Presidio for many languages, structured data and its Azure integration; pii-veil for Polish
@@ -120,7 +119,7 @@ and the restored answer matter as much as the numbers.
 | The stage-2 judges (a local Ollama model, or a remote one) | `pip install "polanon[judge]"` |
 | Components for [Haystack 3](#with-haystack) pipelines | `pip install "polanon[haystack]"` |
 | A [gateway](#a-gateway-for-any-openai-compatible-tool) for tools that use the OpenAI API | `pip install "polanon[gateway]"` |
-| The gateway as a Docker image, with the spaCy model inside | `docker pull ghcr.io/boromat/polanon-gateway:0.3` |
+| The gateway as a Docker image, with the spaCy model inside | `docker pull ghcr.io/boromat/polanon-gateway:0.4` |
 
 Then use `default_guards()` with the model, or `default_guards(with_ner=False)` without it.
 Another spaCy model is one argument away: `default_guards(spacy_model="pl_core_news_lg")`.
@@ -139,7 +138,14 @@ polanon --version  # print the installed version
 polanon "Jan Kowalski, PESEL 50810112354"
 polanon --file umowa.txt --ner --mapping mapping.json > masked.txt
 cat umowa.txt | polanon --ner > masked.txt 2> mapping.json
+polanon --restore --mapping mapping.json --file answer.txt  # the model's answer, restored
+polanon --json "Jan Kowalski, PESEL 50810112354"  # {"text": "...", "mapping": {...}}
 ```
+
+`--restore` puts the originals back into masked text, such as the model's answer, with the mapping
+`--mapping` wrote, a person named in another case included; a token the mapping does not hold
+stays as it is. `--json` writes one JSON object to stdout instead, for a script: the text, and the
+mapping unless `--mapping` takes it.
 
 A non-zero exit status means something went wrong and stderr says what. `--file` reads the file's
 bytes itself and tells UTF-8, UTF-16 (what Windows PowerShell 5.1 writes with `>`) and cp1250
@@ -429,6 +435,10 @@ with `Pipeline.stream()`, feed it the chunks instead: `stream.feed(chunk.content
 are sensitive, such as client names, go in at run time, `{"mask": {"known": clients}}`, so they
 never end up in a saved pipeline.
 
+**The detectors.** Both maskers use the rules alone unless given `with_ner=True`, and then
+`spacy_model`, `mode` and `ml_filter` work as they do in `default_guards`:
+`PolanonDocumentMasker(store=mappings, with_ner=True, mode="paranoid")`.
+
 **Saving a pipeline.** The key is a Haystack `Secret`, and a saved pipeline holds the name of its
 variable only. A mapping store is saved through its own `to_dict`, which should say where it
 connects and never what it holds; `InMemoryMappingStore` has none, so a pipeline with it is built
@@ -439,6 +449,10 @@ in code. Haystack 3 loads classes from its own modules only, so allow this one a
 component receives, and the masker receives the originals. A run that fails keeps its inputs in
 the error's snapshot, written to disk with `HAYSTACK_PIPELINE_SNAPSHOT_SAVE_ENABLED`. Both are off
 by default.
+
+**Haystack's own telemetry is on by default.** Haystack reports how its pipelines are used to its
+own servers unless `HAYSTACK_TELEMETRY_ENABLED=False` is set; polanon sends nothing. Where nothing
+but the masked calls should leave the machine, set it.
 
 ## A gateway for any OpenAI-compatible tool
 
@@ -461,7 +475,7 @@ Or in Docker, with the spaCy model inside, on Intel and ARM machines alike:
 
 ```bash
 docker run --rm -p 127.0.0.1:8787:8787 -e POLANON_UPSTREAM_KEY -e POLANON_GATEWAY_KEY \
-    ghcr.io/boromat/polanon-gateway:0.3 --upstream https://api.openai.com/v1
+    ghcr.io/boromat/polanon-gateway:0.4 --upstream https://api.openai.com/v1
 ```
 
 Inside a container the gateway listens on every interface, so it starts only with
@@ -470,7 +484,7 @@ Inside a container the gateway listens on every interface, so it starts only wit
 keeps the port on this machine. Every option of `polanon-gateway` goes after the image's
 name. A model on the same machine, such as Ollama, is `--upstream
 http://host.docker.internal:11434/v1`, on Linux with `--add-host=host.docker.internal:host-gateway`.
-The image is tagged with the version, such as `0.3.9`, the minor version, `0.3`, and `latest`.
+The image is tagged with the version, such as `0.4.0`, the minor version, `0.4`, and `latest`.
 
 | Tool | Where the base URL goes |
 |---|---|
@@ -517,20 +531,21 @@ What it does with a call:
   per line, leave readable the names the model has to see as they are, such as the assistant's
   own and the company it speaks for; a person named so stays readable too. Everything else in
   the prompt is masked as before.
-- It keeps nothing on disk. A tool sends the whole conversation with every call, and each call is
-  masked and restored on its own. With `POLANON_KEY` set to 64 hexadecimal characters, a person
-  keeps one token in every call and in every grammatical case.
-- Set `"return_pii_map": true` on a chat, Responses or embeddings request when
-  the caller needs the token mapping in the answer as well as the restored text:
-  the flag is stripped before the provider sees the call, and a `return_pii_map`
-  object is added to the JSON body, or to the last event of a stream. The mapping
-  is never logged or sent to the provider.
+- `--pii-map` lets a client that keeps its own records, an audit or a store of mappings, ask for
+  the call's mapping: with `"return_pii_map": true` in the request, the answer carries
+  `"return_pii_map": {"<OSOBA_1>": "Jan Kowalski"}` and `polanon_mask_ms`, how long masking took,
+  and a stream carries both in its last event, a chunk of its own before `[DONE]` for chat
+  completions. The same duration is a `Server-Timing` header, `polanon-mask`. The provider never
+  sees the field, and the mapping is never logged. Without the switch such a request is refused.
 - `--skip-system` on chat completions leaves system and developer messages and
   tool definitions unmasked, and masks user, assistant and tool messages only.
   Company context that lives only in the prompt or in a tool description does
   not become a token. With `return_pii_map`, the object then lists only what
   was replaced in user, assistant and tool messages. The same name in the
   prompt and in the question stays in the prompt and is a token in the question.
+- It keeps nothing on disk. A tool sends the whole conversation with every call, and each call is
+  masked and restored on its own. With `POLANON_KEY` set to 64 hexadecimal characters, a person
+  keeps one token in every call and in every grammatical case.
 
 Keys stay with whoever runs the gateway, and come from the environment only. By default the
 tool's own key is passed on; `POLANON_UPSTREAM_KEY` sends another one instead, as a bearer
@@ -566,11 +581,11 @@ On the annotated sample documents in the repository, the rules alone fully mask 
 values and the rules with `pl_core_news_md` mask 98%, with nothing left half-masked. Thirteen short
 documents are a regression check, not a research benchmark: see the
 [benchmark notes](https://github.com/boromat/polanon/blob/main/benchmarks/README.md) for what is
-missed and why, and for Presidio on the first eleven of them with the same model: 66% fully
-masked, 76% at its most lenient. Eight invented calls of an AI agent, with its English prompt,
+missed and why, and for Presidio on them with the same model: 67% fully masked, 77% at its
+most lenient. Eight invented calls of an AI agent, with its English prompt,
 its tools and their JSON, code, logs, a lease and mail in three languages, measure what an
-agent's traffic costs: with `pl_core_news_md`, 3 of the 243 marked occurrences reach the model,
-and 5 of 307 uses of a token hide nothing, a word the model could not read. The model's answers
+agent's traffic costs: with `pl_core_news_md`, 2 of the 243 marked occurrences reach the model,
+and 5 of 309 uses of a token hide nothing, a word the model could not read. The model's answers
 to them come back with every token restored, as text, as a response and as a stream, and 39 of
 their 40 lines read exactly as a person would write them.
 
@@ -596,7 +611,12 @@ Kowalskiego". `token_instructions("pl")` asks for it, and every restore understa
 the gateway included. Declined are names of one or two words the rules read for sure: a listed
 first name and a surname such as Kowalski, Nowak, Bednarek, Mickiewicz or Duda. A surname alone
 that may be a man's or a woman's, a foreign name, a company and a place come back as written, and
-the case is dropped. Spellings that differ only in letter
+the case is dropped. The other cases of a person who already has a token keep the person's
+number and carry their case: after "Jan Kowalski", "Janowi Kowalskiemu" goes out as
+`<OSOBA_1:celownik>`, so the model sees one person, and restoring declines the name back into
+exactly the form the text wrote. A form that declining does not give back letter for letter, such
+as one in capitals, keeps a token of its own, and a stable token from a key carries no case.
+`CASED_TOKEN_PATTERN` matches a token with a case or without. Spellings that differ only in letter
 case, in the kind of whitespace (a no-break space, a line break, a run of spaces) or in invisible
 characters are the same value, and so are an identifier's groups written apart or together: they
 share its token, and restore writes the spelling seen first. Passwords and custom types are the
@@ -605,8 +625,9 @@ a token with a name that reads alike. A one-word name found in all lowercase kee
 own too, for the reason below.
 
 **Every occurrence of a masked value is masked**, also where no detector would recognise it on its
-own: as written, in capitals, across a line break, with a zero-width character in it, with its
-groups spaced differently, and around whatever a detector found inside it. Two exceptions keep ordinary words readable. A capitalised
+own: as written, in capitals, across a line break, with a zero-width character in it, with
+Cyrillic or Greek letters that look Latin in it, with its groups spaced differently, and around
+whatever a detector found inside it. Two exceptions keep ordinary words readable. A capitalised
 one-word name is not matched in all lowercase, because Zima, Kot and Wilk are surnames and "zima"
 is winter; identifiers such as a VIN or an e-mail address are matched in any case. A number shorter
 than six digits, such as a PIN, is not matched inside a longer number, a date, a time or an
@@ -671,6 +692,21 @@ On the calls of an AI agent in `benchmarks/`, "normal" lets 3 of 243 marked occu
 and 2% of the token uses hide nothing; "paranoid" lets 1 through, a name in Cyrillic no guard
 finds, and more than half of the token uses hide nothing. The rules are the same in both, so without the model
 the mode changes nothing.
+
+In the normal mode, an ML filter drops more of what the model reads as a name: a logistic
+regression that weighs the span, its words and the words around it, their vectors and what the
+rules found there, fitted on public Polish data. It masks the same values whole on every
+benchmark and leaves about a quarter fewer spans that hide nothing: on a part of OpenPII held out
+until it was done, 400 instead of 539. It adds about half a millisecond to a text the model takes
+twelve to read, and it learns nothing from the texts it masks: it ships as fixed weights. Its
+weights read the vectors of `pl_core_news_md`, so with another spaCy model the hand-written
+filters decide alone. It is on by default; the
+[benchmark notes](https://github.com/boromat/polanon/blob/main/benchmarks/README.md#the-ml-filter)
+tell how it was fitted and measured, and this leaves the decision to the hand-written filters:
+
+```python
+guards = default_guards(ml_filter=False)
+```
 
 ## A second opinion: the judge
 
@@ -804,6 +840,14 @@ model, then put them back into the answer. It adds a guard of its own for what t
 knows, such as a LinkedIn link with the name in it, as
 [Adding a detector](https://github.com/boromat/polanon#adding-a-detector) describes. polanon stays optional there: the app installs it on request, talks to it through a
 small JSON-lines bridge, and sends nothing at all while masking is on but polanon is not working.
+
+## Written about
+
+- [unknowNews](https://news.mrugalski.pl/post/833420581541117952/13-listopada-2026), Jakub Mrugalski's newsletter, 13 November 2026: "polanon -
+  zamaskuj polskie dane osobowe przed wysłaniem ich do LLM-a".
+- [blog.prokulski.science](https://blog.prokulski.science/2026/11/16/pamiec-agentow-ai-polskie-pesel-e-w-promptach-i-wykresy-gestosci-w-power-bi/),
+  Łukasz Prokulski's weekly review, 16 November 2026: how polanon masks PESEL, NIP and IBAN
+  reversibly, names in every case, before a text reaches a language model.
 
 ## Contributing
 

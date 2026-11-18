@@ -20,9 +20,11 @@ from dataclasses import dataclass
 from functools import cached_property, lru_cache
 
 from polanon._view import DASHES, INVISIBLE, View, as_read
-from polanon.policy import ENTITY_TYPES, LABEL_TO_ENTITY, TOKEN_PATTERN
+from polanon.policy import CASED_TOKEN_PATTERN, ENTITY_TYPES, LABEL_TO_ENTITY, TOKEN_PATTERN
 
 TOKEN_RE = re.compile(TOKEN_PATTERN)
+#: A token in a text, with its case if it has one: ``<OSOBA_1>`` or ``<OSOBA_1:celownik>``.
+CASED_TOKEN_RE = re.compile(CASED_TOKEN_PATTERN)
 
 #: Translates a range of a searched text to the same characters of the original.
 _ToOriginal = Callable[[int, int], tuple[int, int]]
@@ -105,6 +107,51 @@ _FOLD_FIX = str.maketrans({chr(0x03C2): chr(0x03C3), chr(0x0131): "i"})
 
 _PLAIN_DASHES = str.maketrans(dict.fromkeys(DASHES, "-"))
 
+#: Cyrillic and Greek letters a reader takes for Latin ones, lowercase, as :func:`fold` leaves
+#: them: "Jan Kowalski" written with a Cyrillic a and o reads as the Latin name, to a model too.
+#: A value with a token is searched for with these read as the Latin letters, so such a spelling
+#: does not leave it in clear. Only the search reads them so: what makes two values one, and the
+#: stable tokens, stay as they were.
+_LOOKALIKES = str.maketrans(
+    {
+        # Cyrillic: a, ve, ie, ka, em, en, o, er, es, te, u, ha, i, je, dze, komi de, qa, we
+        "\u0430": "a",
+        "\u0432": "b",
+        "\u0435": "e",
+        "\u043a": "k",
+        "\u043c": "m",
+        "\u043d": "h",
+        "\u043e": "o",
+        "\u0440": "p",
+        "\u0441": "c",
+        "\u0442": "t",
+        "\u0443": "y",
+        "\u0445": "x",
+        "\u0456": "i",
+        "\u0458": "j",
+        "\u0455": "s",
+        "\u0501": "d",
+        "\u051b": "q",
+        "\u051d": "w",
+        # Greek: alpha, beta, epsilon, zeta, eta, iota, kappa, mu, nu, omicron, rho, tau,
+        # upsilon, chi
+        "\u03b1": "a",
+        "\u03b2": "b",
+        "\u03b5": "e",
+        "\u03b6": "z",
+        "\u03b7": "h",
+        "\u03b9": "i",
+        "\u03ba": "k",
+        "\u03bc": "m",
+        "\u03bd": "n",
+        "\u03bf": "o",
+        "\u03c1": "p",
+        "\u03c4": "t",
+        "\u03c5": "y",
+        "\u03c7": "x",
+    }
+)
+
 #: Longer than any date, time or amount the check around a short number reads, as written with
 #: its joiners: "1.234.567.890,12" is 16 characters.
 _LONGEST_SHAPE = 20
@@ -121,12 +168,21 @@ _JOINED_BEFORE = re.compile(rf"[\d{re.escape(NUMBER_JOINERS)}]*\Z")
 
 
 def type_of(token: str) -> str | None:
-    """Return the entity type a token stands for, or None when the string is not a token."""
+    """Return the entity type a token stands for, or None when the string is not a token.
+
+    A mapping holds tokens without a case, so a token with one, ``<OSOBA_1:celownik>``, is no
+    token here; :func:`base_token` gives the token it declines.
+    """
     match = TOKEN_RE.fullmatch(token)
     if match is None:
         return None
     label = match.group("label")
     return LABEL_TO_ENTITY.get(label, label)
+
+
+def base_token(match: re.Match[str]) -> str:
+    """Return the token a match of :data:`CASED_TOKEN_RE` declines: ``<OSOBA_1>`` for either."""
+    return f"<{match['label']}_{match['n']}>"
 
 
 def fold(text: str) -> str:
@@ -140,6 +196,14 @@ def fold(text: str) -> str:
     if len(folded) != len(text):
         folded = "".join(char.lower()[0] for char in text)
     return folded.translate(_FOLD_FIX)
+
+
+def skeleton(text: str) -> str:
+    """Return :func:`fold` of `text` with the letters that look Latin made Latin.
+
+    Character for character, so positions in the result are positions in `text`.
+    """
+    return fold(text).translate(_LOOKALIKES)
 
 
 def squeeze(text: str) -> str:
@@ -188,6 +252,36 @@ def _value_keys(value: str, entity_type: str) -> tuple[tuple[str, str], ...]:
     if entity_type in _GROUPED_TYPES:
         keys.append(("grouped", _GROUP_SEPARATOR.sub("", folded)))
     return tuple(keys)
+
+
+def token_keys(value: str, entity_type: str) -> list[tuple[str, str]]:
+    """Return the keys that give two spellings of a value one token.
+
+    These are :func:`value_keys`; for a value whose letter case does not matter each of them
+    once more with the Cyrillic and Greek letters that look Latin made Latin, so "Jan Kowalski"
+    written with a Cyrillic a and o keeps the token of the name it looks like; and, but for a
+    person, the canonical form the stable tokens are computed from, so the numbered tokens take
+    two spellings for one value where the stable ones do: "jan.kowalski [at] example.com" is the
+    plain address. A person's canonical form is its base form, and a person named in another
+    case gets the token with that case instead. The stable tokens themselves do not change.
+
+    Kept like :func:`value_keys` until :func:`forget`: every text of a call is masked against
+    the whole mapping, and working them out again for each text made a large call 9% slower.
+    """
+    return list(_token_keys(value, entity_type))
+
+
+@lru_cache(maxsize=_KEYED_VALUES)
+def _token_keys(value: str, entity_type: str) -> tuple[tuple[str, str], ...]:
+    keys = _value_keys(value, entity_type)
+    if not folds(entity_type):
+        return keys
+    from polanon._canonical import canonical  # it reads values through this module
+
+    lookalike = tuple((f"{kind}, lookalike", skeleton(key)) for kind, key in keys)
+    if entity_type == "PERSON":
+        return keys + lookalike
+    return (*keys, *lookalike, ("canonical", canonical(value, entity_type)))
 
 
 class Ranges:
@@ -266,7 +360,8 @@ class Haystack:
     """A text prepared for the searches beside the exact one, and the way back to the original.
 
     `text` is the guards' view of the text with every run of whitespace read as one space, and
-    `folded` is the same text lowercased character for character.
+    `folded` is the same text lowercased character for character, with the Cyrillic and Greek
+    letters that look Latin made Latin.
     """
 
     def __init__(self, text: str, view: View | None) -> None:
@@ -275,7 +370,7 @@ class Haystack:
         self._view = view
         self._squeezed = _Removal.of(seen, _WHITESPACE_RUN, " ")
         self.text = self._squeezed.text
-        self.folded = fold(self.text)
+        self.folded = skeleton(self.text)
         #: Whether `text` is the original as written, so a search in it repeats the exact one.
         self.as_written = view is None and not self._squeezed.gaps
 
@@ -347,6 +442,7 @@ def forget() -> None:
     _prepared_needles.cache_clear()
     _prepared_tables.cache_clear()
     _value_keys.cache_clear()
+    _token_keys.cache_clear()
 
 
 def needles(values: Iterable[tuple[str, str]]) -> list[Needle]:
@@ -371,7 +467,7 @@ def _prepared_needles(values: tuple[tuple[str, str], ...]) -> tuple[Needle, ...]
         folding = folds(entity_type)
         ungrouped = None
         if entity_type in _GROUPED_TYPES:
-            ungrouped = _GROUP_SEPARATOR.sub("", fold(read))
+            ungrouped = _GROUP_SEPARATOR.sub("", skeleton(read))
         needle = Needle(value.strip(), read, payload, folding, ungrouped)
         found.setdefault((needle.written, folding), needle)
     return tuple(sorted(found.values(), key=lambda needle: (-len(needle.read), needle.folds)))
@@ -474,7 +570,7 @@ def _find(text: str, haystack: Haystack, found: list[Needle]) -> _Found:
         if not needle.folds and not (haystack.as_written and needle.read == needle.written)
     ]
     for indices, searched, wanted in (
-        (folding, haystack.folded, [fold(found[i].read) for i in folding]),
+        (folding, haystack.folded, [skeleton(found[i].read) for i in folding]),
         (exact_case, haystack.text, [found[i].read for i in exact_case]),
     ):
         for index, positions in zip(indices, occurrences(searched, wanted), strict=True):

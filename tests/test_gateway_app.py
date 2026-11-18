@@ -386,6 +386,20 @@ async def test_a_provider_that_breaks_off_a_stream_ends_it():
     assert '"Tak"' in response.text
 
 
+async def test_a_provider_that_breaks_off_a_stream_still_gives_back_the_held_text():
+    lines = [
+        'data: {"id": "s1", "choices": [{"index": 0, "delta": {"content": "Tak, <OSOBA"}}]}\n\n',
+    ]
+    async with client(_stream_provider(lines, break_off=True)) as gw:
+        response = await gw.post("/v1/chat/completions", json=chat("Jan Kowalski?", stream=True))
+    contents = [
+        json.loads(line[6:])["choices"][0]["delta"]["content"]
+        for line in response.text.splitlines()
+        if line.startswith('data: {"')
+    ]
+    assert "".join(contents) == "Tak, <OSOBA"
+
+
 async def test_an_answer_that_is_not_json_gives_a_bad_gateway():
     async with client(lambda request: httpx.Response(200, text="oops")) as gw:
         response = await gw.post("/v1/chat/completions", json=chat("Hej."))
@@ -579,22 +593,6 @@ async def test_the_provider_s_error_on_a_responses_call_passes_through():
 # --- return_pii_map ------------------------------------------------------------------------------
 
 
-async def test_return_pii_map_adds_the_mapping_and_strips_the_flag_from_the_provider_request():
-    provider = Provider()
-    async with client(provider) as gw:
-        response = await gw.post(
-            "/v1/chat/completions",
-            json=chat(f"Jan Kowalski, PESEL {PESEL}.", return_pii_map=True),
-        )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["return_pii_map"] == {"<OSOBA_1>": "Jan Kowalski", "<PESEL_1>": PESEL}
-    assert "return_pii_map" not in provider.requests[0][1]
-    assert (
-        response.json()["choices"][0]["message"]["content"] == f"Echo: Jan Kowalski, PESEL {PESEL}."
-    )
-
-
 async def test_return_pii_map_false_is_absent_from_the_answer_and_stripped():
     provider = Provider()
     async with client(provider) as gw:
@@ -618,72 +616,9 @@ async def test_return_pii_map_must_be_a_boolean():
     assert provider.requests == []
 
 
-async def test_a_streamed_chat_answer_carries_the_mapping_on_the_last_event_only():
-    provider = Provider()
-    async with client(provider) as gw:
-        response = await gw.post(
-            "/v1/chat/completions",
-            json=chat("Jan Kowalski dzwonił.", stream=True, return_pii_map=True),
-        )
-    events = [
-        json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: {")
-    ]
-    assert len(events) >= 1
-    assert all("return_pii_map" not in event for event in events[:-1])
-    assert events[-1]["return_pii_map"] == {"<OSOBA_1>": "Jan Kowalski"}
-    text = "".join(event["choices"][0]["delta"].get("content", "") for event in events)
-    assert text == "Echo: Jan Kowalski dzwonił."
-
-
-async def test_embeddings_can_return_the_mapping():
-    provider = Provider()
-    async with client(provider) as gw:
-        response = await gw.post(
-            "/v1/embeddings",
-            json={"model": "e", "input": ["Jan Kowalski"], "return_pii_map": True},
-        )
-    assert response.json()["return_pii_map"] == {"<OSOBA_1>": "Jan Kowalski"}
-    assert "return_pii_map" not in provider.requests[0][1]
-
-
-async def test_a_responses_answer_can_return_the_mapping():
-    received = []
-    async with client(_responses_provider(received)) as gw:
-        response = await gw.post(
-            "/v1/responses",
-            json=responses_body(f"Jan Kowalski, PESEL {PESEL}.", return_pii_map=True),
-        )
-    assert response.json()["return_pii_map"] == {"<OSOBA_1>": "Jan Kowalski", "<PESEL_1>": PESEL}
-    assert "return_pii_map" not in received[0]
-
-
-async def test_a_streamed_responses_answer_carries_the_mapping_on_the_last_event():
-    received = []
-    async with client(_responses_provider(received)) as gw:
-        response = await gw.post(
-            "/v1/responses",
-            json=responses_body("Jan Kowalski dzwonił.", stream=True, return_pii_map=True),
-        )
-    events = [
-        json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: {")
-    ]
-    assert events[-1]["return_pii_map"] == {"<OSOBA_1>": "Jan Kowalski"}
-    assert all("return_pii_map" not in event for event in events[:-1])
-
-
-async def test_the_provider_s_error_carries_no_mapping():
-    async with client(Provider(status=429)) as gw:
-        response = await gw.post(
-            "/v1/chat/completions",
-            json=chat("Jan Kowalski.", return_pii_map=True),
-        )
-    assert response.status_code == 429
-    assert "return_pii_map" not in response.json()
-
-
 async def test_the_log_never_quotes_a_returned_mapping(caplog):
     caplog.set_level(logging.INFO, logger="polanon.gateway")
-    async with client(Provider()) as gw:
+    async with client(Provider(), pii_map=True) as gw:
         await gw.post(
             "/v1/chat/completions",
             json=chat(f"Jan Kowalski, PESEL {PESEL}.", return_pii_map=True),
@@ -709,7 +644,7 @@ def _assert_mask_timing(response, *, expect: bool) -> None:
 
 async def test_polanon_mask_ms_and_server_timing_only_when_return_pii_map_is_true():
     provider = Provider()
-    async with client(provider) as gw:
+    async with client(provider, pii_map=True) as gw:
         on = await gw.post(
             "/v1/chat/completions",
             json=chat("Jan Kowalski.", return_pii_map=True),
@@ -725,7 +660,10 @@ async def test_polanon_mask_ms_and_server_timing_only_when_return_pii_map_is_tru
 
 async def test_polanon_mask_ms_on_embeddings_and_responses_when_return_pii_map():
     received = []
-    async with client(Provider()) as gw, client(_responses_provider(received)) as gw_resp:
+    async with (
+        client(Provider(), pii_map=True) as gw,
+        client(_responses_provider(received), pii_map=True) as gw_resp,
+    ):
         emb = await gw.post(
             "/v1/embeddings",
             json={"model": "e", "input": ["Jan Kowalski"], "return_pii_map": True},
@@ -742,7 +680,7 @@ async def test_polanon_mask_ms_on_embeddings_and_responses_when_return_pii_map()
 
 async def test_streamed_chat_carries_polanon_mask_ms_on_the_last_event_only():
     provider = Provider()
-    async with client(provider) as gw:
+    async with client(provider, pii_map=True) as gw:
         response = await gw.post(
             "/v1/chat/completions",
             json=chat("Jan Kowalski dzwonił.", stream=True, return_pii_map=True),
@@ -758,7 +696,7 @@ async def test_streamed_chat_carries_polanon_mask_ms_on_the_last_event_only():
 
 async def test_streamed_responses_carries_polanon_mask_ms_on_the_last_event_only():
     received = []
-    async with client(_responses_provider(received)) as gw:
+    async with client(_responses_provider(received), pii_map=True) as gw:
         response = await gw.post(
             "/v1/responses",
             json=responses_body("Jan Kowalski.", stream=True, return_pii_map=True),
@@ -772,7 +710,7 @@ async def test_streamed_responses_carries_polanon_mask_ms_on_the_last_event_only
 
 async def test_streamed_chat_with_return_pii_map_separates_the_last_chunk_from_done():
     provider = Provider()
-    async with client(provider) as gw:
+    async with client(provider, pii_map=True) as gw:
         response = await gw.post(
             "/v1/chat/completions",
             json=chat("Jan Kowalski.", stream=True, return_pii_map=True),
@@ -806,7 +744,7 @@ async def test_skip_system_leaves_system_and_tools_unmasked():
         "tools": tools,
         "return_pii_map": True,
     }
-    async with client(provider, skip_system=True) as gw:
+    async with client(provider, skip_system=True, pii_map=True) as gw:
         response = await gw.post("/v1/chat/completions", json=body)
     assert response.status_code == 200
     sent = provider.requests[0][1]
@@ -1109,3 +1047,159 @@ async def test_a_name_found_late_in_a_tool_result_goes_out_masked_and_the_call_i
     assert response.status_code == 200
     assert "Wąsowicz" not in provider.sent()
     assert "Kowalski" not in provider.sent()
+
+
+# --- return_pii_map: the call's mapping, for a client that keeps its own records ---
+
+
+def _sse_events(text):
+    """The data of each event of a stream, as an SSE client reads them: split at blank lines."""
+    events = []
+    for block in text.split("\n\n"):
+        data = [line[5:].strip() for line in block.splitlines() if line.startswith("data:")]
+        if data:
+            events.append("\n".join(data))
+    return events
+
+
+async def test_a_client_that_asks_gets_the_call_s_mapping_and_the_provider_never_sees_the_flag():
+    provider = Provider()
+    async with client(provider, pii_map=True) as gw:
+        response = await gw.post(
+            "/v1/chat/completions",
+            json=chat(f"Jan Kowalski, PESEL {PESEL}", return_pii_map=True),
+        )
+    assert response.status_code == 200
+    answer = response.json()
+    assert answer["return_pii_map"] == {"<OSOBA_1>": "Jan Kowalski", "<PESEL_1>": PESEL}
+    assert answer["choices"][0]["message"]["content"] == f"Echo: Jan Kowalski, PESEL {PESEL}"
+    assert "return_pii_map" not in provider.requests[0][1]
+
+
+async def test_without_the_operator_s_switch_a_client_cannot_have_the_mapping():
+    """The mapping holds the originals, and with stable tokens it tells which token stands for
+    which value: only an operator who started the gateway with --pii-map hands it out."""
+    provider = Provider()
+    async with client(provider) as gw:
+        refused = await gw.post(
+            "/v1/chat/completions", json=chat("Jan Kowalski", return_pii_map=True)
+        )
+        plain = await gw.post(
+            "/v1/chat/completions", json=chat("Jan Kowalski", return_pii_map=False)
+        )
+    assert refused.status_code == 400
+    assert refused.json()["error"]["code"] == "pii_map_off"
+    assert plain.status_code == 200
+    assert "return_pii_map" not in plain.json()
+    assert len(provider.requests) == 1
+    assert "return_pii_map" not in provider.requests[0][1]
+
+
+@pytest.mark.parametrize("flag", ["yes", 1, None])
+async def test_a_flag_that_is_not_true_or_false_is_refused_and_nothing_is_sent(flag):
+    provider = Provider()
+    async with client(provider, pii_map=True) as gw:
+        response = await gw.post(
+            "/v1/chat/completions", json=chat("Jan Kowalski", return_pii_map=flag)
+        )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_request"
+    assert provider.requests == []
+
+
+async def test_a_token_the_client_wrote_itself_is_not_in_the_mapping_it_gets_back():
+    async with client(Provider(), pii_map=True) as gw:
+        response = await gw.post(
+            "/v1/chat/completions", json=chat("Jan Kowalski i <PESEL_1>", return_pii_map=True)
+        )
+    assert response.json()["return_pii_map"] == {"<OSOBA_1>": "Jan Kowalski"}
+
+
+async def test_a_streamed_chat_carries_the_mapping_in_an_event_of_its_own_before_done():
+    """Every event stays one JSON object: a client reading the stream as SSE gets each chunk,
+    the mapping, and [DONE] apart."""
+    async with client(Provider(), pii_map=True) as gw:
+        response = await gw.post(
+            "/v1/chat/completions",
+            json=chat("Jan Kowalski", stream=True, return_pii_map=True),
+        )
+    events = _sse_events(response.text)
+    assert events[-1] == "[DONE]"
+    *chunks, last = [json.loads(event) for event in events[:-1]]
+    assert last["return_pii_map"] == {"<OSOBA_1>": "Jan Kowalski"}
+    assert last["choices"] == []
+    assert last["id"] == "s1"
+    assert not any("return_pii_map" in chunk for chunk in chunks)
+    text = "".join(c["choices"][0]["delta"].get("content", "") for c in chunks if c["choices"])
+    assert text == "Echo: Jan Kowalski"
+
+
+async def test_a_streamed_chat_without_done_still_ends_with_the_mapping():
+    lines = ['data: {"id": "s1", "choices": [{"index": 0, "delta": {"content": "Tak"}}]}\n\n']
+    async with client(_stream_provider(lines), pii_map=True) as gw:
+        response = await gw.post(
+            "/v1/chat/completions", json=chat("Jan Kowalski?", stream=True, return_pii_map=True)
+        )
+    events = [json.loads(event) for event in _sse_events(response.text)]
+    assert events[-1]["return_pii_map"] == {"<OSOBA_1>": "Jan Kowalski"}
+
+
+async def test_the_responses_api_carries_the_mapping_in_the_answer_and_its_completed_event():
+    received = []
+    async with client(_responses_provider(received), pii_map=True) as gw:
+        plain = await gw.post(
+            "/v1/responses", json=responses_body("Jan Kowalski dzwonił.", return_pii_map=True)
+        )
+        streamed = await gw.post(
+            "/v1/responses",
+            json=responses_body("Jan Kowalski dzwonił.", stream=True, return_pii_map=True),
+        )
+    expected = {"<OSOBA_1>": "Jan Kowalski"}
+    assert plain.json()["return_pii_map"] == expected
+    events = [json.loads(event) for event in _sse_events(streamed.text)]
+    names = [line[7:] for line in streamed.text.splitlines() if line.startswith("event: ")]
+    assert names == [event["type"] for event in events]
+    assert [e["type"] for e in events if "return_pii_map" in e] == ["response.completed"]
+    assert events[-1]["return_pii_map"] == expected
+    assert not any("return_pii_map" in body for body in received)
+
+
+async def test_the_messages_api_carries_the_mapping_in_the_answer_and_in_message_stop():
+    received = []
+    async with client(_messages_provider(received), pii_map=True) as gw:
+        plain = await gw.post(
+            "/v1/messages", json=messages_body("Jan Kowalski dzwonił.", return_pii_map=True)
+        )
+        streamed = await gw.post(
+            "/v1/messages",
+            json=messages_body("Jan Kowalski dzwonił.", stream=True, return_pii_map=True),
+        )
+    expected = {"<OSOBA_1>": "Jan Kowalski"}
+    assert plain.json()["return_pii_map"] == expected
+    events = [json.loads(event) for event in _sse_events(streamed.text)]
+    assert [e["type"] for e in events if "return_pii_map" in e] == ["message_stop"]
+    assert events[-1]["return_pii_map"] == expected
+    assert not any("return_pii_map" in body for _, body in received)
+
+
+async def test_embeddings_carry_the_mapping_of_their_input():
+    provider = Provider()
+    async with client(provider, pii_map=True) as gw:
+        response = await gw.post(
+            "/v1/embeddings",
+            json={"model": "e", "input": "Jan Kowalski", "return_pii_map": True},
+        )
+    assert response.status_code == 200
+    assert response.json()["return_pii_map"] == {"<OSOBA_1>": "Jan Kowalski"}
+    assert response.json()["data"] == [{"embedding": [0.1, 0.2]}]
+    assert "return_pii_map" not in provider.requests[0][1]
+
+
+async def test_a_provider_s_error_comes_back_as_it_was_without_the_mapping():
+    async with client(Provider(status=429), pii_map=True) as gw:
+        response = await gw.post(
+            "/v1/chat/completions", json=chat("Jan Kowalski", return_pii_map=True)
+        )
+    assert response.status_code == 429
+    assert "return_pii_map" not in response.text
+    assert "Kowalski" not in response.text
