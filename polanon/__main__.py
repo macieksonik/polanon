@@ -5,6 +5,10 @@ token mapping to stderr, or to a file with --mapping, so a pipeline can keep the
 
     polanon "Jan Kowalski, PESEL 50810112354"
     polanon --file umowa.txt --ner --mapping mapping.json > masked.txt
+    polanon --restore --mapping mapping.json --file answer.txt
+
+With --restore it puts the originals back into masked text, such as a model's answer. With --json
+it writes one JSON object to stdout instead: the text, and the mapping unless --mapping takes it.
 
 The mapping is what makes the masking reversible, so treat it the way you would treat the original
 document.
@@ -12,6 +16,7 @@ document.
 
 import argparse
 import codecs
+import contextlib
 import json
 import os
 import sys
@@ -21,7 +26,10 @@ from typing import TextIO
 
 from polanon import Anonymizer, __version__, default_guards
 
-DESCRIPTION = "Mask personal data in text before it goes to an LLM; the mapping goes to stderr."
+DESCRIPTION = (
+    "Mask personal data in text before it goes to an LLM; the mapping goes to stderr. With "
+    "--restore, put the originals back into masked text."
+)
 
 #: Exit status when the language model was asked for but is not installed.
 MISSING_MODEL = 3
@@ -41,11 +49,11 @@ class UndecodableInputError(ValueError):
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Anonymize text from the command line, a file or standard input.
+    """Anonymize text from the command line, a file or standard input, or restore masked text.
 
     Returns:
-        0 on success, 2 when there was no text to mask or it could not be read or decoded, or the
-        mapping could not be written, 3 when --ner is given without spaCy.
+        0 on success, 2 when there was no text or it could not be read or decoded, or the mapping
+        could not be written or read, 3 when --ner is given without spaCy.
     """
     parser = argparse.ArgumentParser(prog="polanon", description=DESCRIPTION)
     parser.add_argument("--version", action="version", version=f"polanon {__version__}")
@@ -58,7 +66,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--mapping",
         metavar="PATH",
-        help="write the mapping to this file as UTF-8 JSON instead of to stderr",
+        help="write the mapping to this file as UTF-8 JSON instead of to stderr; with --restore, "
+        "read it from there",
+    )
+    parser.add_argument(
+        "--restore",
+        action="store_true",
+        help="put the originals back into masked text, such as a model's answer, with the mapping "
+        "from --mapping",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="write one JSON object to stdout: the text, and the mapping unless --mapping takes it",
     )
     parser.add_argument(
         "--ner", action="store_true", help="also load the spaCy model for names and places"
@@ -78,6 +98,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--file cannot be combined with text arguments")
     if args.paranoid and not args.ner:
         parser.error("--paranoid needs --ner: it sets what the spaCy model may leave out")
+    if args.restore and args.mapping is None:
+        parser.error("--restore needs --mapping: the file the masking wrote the mapping to")
+    if args.restore and args.ner:
+        parser.error("--restore finds nothing, so it takes no --ner or --paranoid")
 
     _write_utf8(sys.stdout)
     _write_utf8(sys.stderr)
@@ -91,10 +115,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     if not text.strip():
         print(
-            "nothing to mask: pass text as arguments, with --file or on standard input",
+            f"nothing to {'restore' if args.restore else 'mask'}: pass text as arguments, with "
+            "--file or on standard input",
             file=sys.stderr,
         )
         return 2
+    if args.restore:
+        return _restore(text, args.mapping, as_json=args.json)
     try:
         guards = default_guards(
             with_ner=args.ner,
@@ -107,7 +134,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     result = Anonymizer(guards).anonymize_sync(text)
     if args.mapping is None:
-        print(result.anonymized)
+        if args.json:
+            print(_object({"text": result.anonymized, "mapping": result.mapping}))
+            return 0
+        # Flushed, so in one terminal the masked text comes before the unbuffered mapping.
+        print(result.anonymized, flush=True)
         print(json.dumps(result.mapping, ensure_ascii=False, indent=2), file=sys.stderr)
         return 0
     # The mapping first: masked text that cannot be restored is of no use to anyone.
@@ -116,8 +147,47 @@ def main(argv: Sequence[str] | None = None) -> int:
     except OSError as exc:
         print(f"polanon: cannot write {args.mapping}: {_reason(exc)}", file=sys.stderr)
         return 2
-    print(result.anonymized)
+    print(_object({"text": result.anonymized}) if args.json else result.anonymized)
     return 0
+
+
+def _restore(text: str, path: str, *, as_json: bool) -> int:
+    """Put the originals back into masked text, with the mapping from `path`."""
+    try:
+        mapping = _read_mapping(path)
+    except OSError as exc:
+        print(f"polanon: cannot read {path}: {_reason(exc)}", file=sys.stderr)
+        return 2
+    except (ValueError, UndecodableInputError):
+        # What the file holds stays out of the message: it may be the originals.
+        print(
+            f"polanon: {path} is not a mapping: a JSON object of tokens and the text each stands "
+            "for, as --mapping writes it",
+            file=sys.stderr,
+        )
+        return 2
+    restored = Anonymizer.restore(text, mapping)
+    print(_object({"text": restored}) if as_json else restored)
+    return 0
+
+
+def _read_mapping(path: str) -> dict[str, str]:
+    """Read a mapping --mapping wrote: a JSON object of strings, whatever the file's encoding.
+
+    Raises:
+        ValueError: for a file that is not such an object.
+    """
+    mapping = json.loads(_decode(Path(path).read_bytes()))
+    if not isinstance(mapping, dict) or not all(
+        isinstance(token, str) and isinstance(value, str) for token, value in mapping.items()
+    ):
+        raise ValueError("not a mapping")
+    return mapping
+
+
+def _object(fields: Mapping[str, object]) -> str:
+    """One JSON object on one line, Polish letters as they are."""
+    return json.dumps(fields, ensure_ascii=False)
 
 
 def _read_input(path: str | None, words: Sequence[str]) -> str:
@@ -193,8 +263,16 @@ def _strict(raw: bytes, encoding: str) -> str:
 
 
 def _write_mapping(path: str, mapping: Mapping[str, str]) -> None:
-    """Write the mapping as UTF-8 JSON, created readable by its owner only where the OS allows."""
+    """Write the mapping as UTF-8 JSON, readable by its owner only where the OS allows.
+
+    A file that already exists is narrowed to its owner too before anything is written to it:
+    the mode given to `os.open` applies only to a file it creates, and one left at 0644 by an
+    earlier run let anyone on the machine read the originals.
+    """
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    if hasattr(os, "fchmod"):
+        with contextlib.suppress(OSError):  # not the file's owner: it keeps what its owner set
+            os.fchmod(descriptor, 0o600)
     with open(descriptor, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(mapping, handle, ensure_ascii=False, indent=2)
         handle.write("\n")

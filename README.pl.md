@@ -11,10 +11,9 @@ Zamaskuj dane osobowe, zanim prompt opuści twoją sieć, wyślij do modelu same
 wstaw z powrotem do jego odpowiedzi, nawet wtedy, gdy przychodzi strumieniowo. Czysty Python: rdzeń
 nie potrzebuje niczego poza biblioteką standardową.
 
-polanon trafił do [unknowNews](https://mrugalski.pl/nl/wu/ojVtmS0K0CI892763N1hEauM1A),
-cotygodniowego newslettera Jakuba Mrugalskiego dla ludzi z branży IT, 13 listopada 2026.
+[Pisali o nas](#pisali-o-polanon)
 
-<p align="center"><a href="https://boromat.github.io/demo/"><img src="https://raw.githubusercontent.com/boromat/polanon/main/docs/try-demo.pl.svg" alt="Wypróbuj polanon w przeglądarce"></a></p>
+<p align="center"><a href="https://boromat.pl/demo/"><img src="https://raw.githubusercontent.com/boromat/polanon/main/docs/try-demo.pl.svg" alt="Wypróbuj polanon w przeglądarce"></a></p>
 
 **Bez pisania kodu**, z bramką w Dockerze. Claude Code, n8n, Open WebUI, LibreChat, Hermes Agent
 i każde inne narzędzie, które mówi API OpenAI albo Anthropic, działają jak dotąd, a każde
@@ -24,7 +23,7 @@ wywołanie jest maskowane, zanim wyjdzie:
 export POLANON_UPSTREAM_KEY=sk-...                 # klucz twojego dostawcy
 export POLANON_GATEWAY_KEY=$(openssl rand -hex 16)  # klucz, który wyślą twoje narzędzia
 docker run --rm -p 127.0.0.1:8787:8787 -e POLANON_UPSTREAM_KEY -e POLANON_GATEWAY_KEY \
-    ghcr.io/boromat/polanon-gateway:0.3 --upstream https://api.openai.com/v1
+    ghcr.io/boromat/polanon-gateway:0.4 --upstream https://api.openai.com/v1
 ```
 
 Potem ustaw w narzędziu adres bazowy `http://127.0.0.1:8787/v1`, a jako klucz API wartość
@@ -36,7 +35,7 @@ Wszystkie narzędzia, bramkę bez Dockera i to, co robi z wywołaniem, opisuje
 
 **W Pythonie**, we własnym kodzie: zamaskuj tekst, wyślij go, przywróć odpowiedź.
 
-![polanon w terminalu: maskowanie polskiego tekstu w Pythonie i przywracanie odpowiedzi, bramka w Dockerze przed narzędziem i wyniki wobec Presidio](https://raw.githubusercontent.com/boromat/polanon/main/docs/demo.pl.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/boromat/polanon/main/docs/demo.pl.svg" alt="polanon w terminalu: maskowanie polskiego tekstu w Pythonie i przywracanie odpowiedzi, bramka w Dockerze przed narzędziem i wyniki wobec Presidio"></p>
 
 ```bash
 pip install polanon
@@ -88,7 +87,7 @@ pocztowe.
 
 ## Na tle innych
 
-![polanon i Presidio na polskich danych, na których polanon nie był strojony: wartości zamaskowane w całości, fałszywe alarmy, rodzaje danych i osoby w prawdziwych tekstach](https://raw.githubusercontent.com/boromat/polanon/main/docs/comparison.pl.svg)
+<p align="center"><img src="https://raw.githubusercontent.com/boromat/polanon/main/docs/comparison.pl.svg" alt="polanon i Presidio na polskich danych, na których polanon nie był strojony: wartości zamaskowane w całości, fałszywe alarmy, rodzaje danych i osoby w prawdziwych tekstach"></p>
 
 |  | polanon | [Presidio](https://github.com/data-privacy-stack/presidio) | [pii-veil](https://pypi.org/project/pii-veil/) | [piimask](https://pypi.org/project/piimask/) |
 |---|---|---|---|---|
@@ -96,7 +95,7 @@ pocztowe.
 | Polskie identyfikatory z sumą kontrolną | PESEL, NIP, REGON, dowód osobisty, IBAN, karty płatnicze | PESEL; IBAN i karty płatnicze w wersji ogólnej | PESEL, NIP, REGON, IBAN, karty płatnicze; dowód osobisty i paszport tylko według wzorca | Brak; IBAN i karty płatnicze w wersji ogólnej |
 | Polskie imiona i nazwiska w każdym przypadku gramatycznym | Dla imion z listy i zgodnych z nimi nazwisk, bez modelu językowego; resztę dokłada spaCy | Z polskim modelem spaCy i zmapowaną etykietą `persName` | Nie są wykrywane | Nie są wykrywane; jego README sugeruje dodanie modelu NER |
 | Czego potrzebuje rdzeń | Niczego poza biblioteką standardową | spaCy, numpy, pydantic i kilku innych pakietów; modelu językowego tylko do imion i nazwisk oraz miejsc | pii-core i typer | Niczego poza biblioteką standardową |
-| Na polskich danych, na których żadne nie było strojone ([OpenPII, KPWr](https://github.com/boromat/polanon/blob/main/benchmarks/README.md#on-data-polanon-was-never-tuned-on)) | 71% z 5255 wartości zamaskowanych w całości z `pl_core_news_md`, 435 fałszywych alarmów; 90% osób w prawdziwych tekstach | 66%, 2641 fałszywych alarmów; 90% osób (presidio-analyzer 2.2.366, ten sam model) | Nie mierzono | Nie mierzono |
+| Na polskich danych, na których żadne nie było strojone ([OpenPII, KPWr](https://github.com/boromat/polanon/blob/main/benchmarks/README.md#on-data-polanon-was-never-tuned-on)) | 71% z 5255 wartości zamaskowanych w całości z `pl_core_news_md`, 306 fałszywych alarmów; 90% osób w prawdziwych tekstach | 66%, 2641 fałszywych alarmów; 90% osób (presidio-analyzer 2.2.366, ten sam model) | Nie mierzono | Nie mierzono |
 | Na własnych [przykładowych dokumentach](https://github.com/boromat/polanon/blob/main/benchmarks/README.md) biblioteki polanon, na których była strojona | 98% zamaskowanych w całości z `pl_core_news_md`, 86% przy samych regułach | 67% z tym samym modelem | Nie mierzono | Nie mierzono |
 | Licencja | MIT | MIT | Apache-2.0 | MIT |
 
@@ -106,7 +105,7 @@ z `benchmarks/`. Trzynaście własnych dokumentów biblioteki polanon nie jest n
 napisał je jej autor i dostrajał na nich reguły, a Presidio dostał tylko polski model, także do
 trzech faktur z zagranicy. Neutralne są polskie wiersze OpenPII od ai4privacy i KPWr od CLARIN-PL:
 na mierzonych częściach polanon nigdy nie był strojony, a różnica maleje tam do pięciu punktów
-i sześć razy mniej fałszywych alarmów, z remisem na osobach, gdzie pracuje ten sam model spaCy.
+i osiem razy mniej fałszywych alarmów, z remisem na osobach, gdzie pracuje ten sam model spaCy.
 Presidio wygrywa na losowych kodach bez etykiety, które czyta wzorcami o niskiej pewności,
 oznaczającymi też kody produktów i numery zamówień. Każde z tych narzędzi ma swoje miejsce. Presidio
 służy do wielu języków, danych ustrukturyzowanych i integracji z Azure, pii-veil do polskich
@@ -126,7 +125,7 @@ odpowiedź liczą się tak samo jak numery.
 | Sędziowie etapu 2 (lokalny model w Ollamie albo zdalny) | `pip install "polanon[judge]"` |
 | Komponenty do potoków [Haystacka 3](#z-haystackiem) | `pip install "polanon[haystack]"` |
 | [Bramka](#bramka-dla-każdego-narzędzia-zgodnego-z-api-openai) dla narzędzi korzystających z API OpenAI | `pip install "polanon[gateway]"` |
-| Bramka jako obraz Dockera, z modelem spaCy w środku | `docker pull ghcr.io/boromat/polanon-gateway:0.3` |
+| Bramka jako obraz Dockera, z modelem spaCy w środku | `docker pull ghcr.io/boromat/polanon-gateway:0.4` |
 
 Następnie użyj `default_guards()` z modelem albo `default_guards(with_ner=False)` bez niego.
 Inny model spaCy to kwestia jednego argumentu: `default_guards(spacy_model="pl_core_news_lg")`.
@@ -145,7 +144,14 @@ polanon --version  # wypisuje zainstalowaną wersję
 polanon "Jan Kowalski, PESEL 50810112354"
 polanon --file umowa.txt --ner --mapping mapping.json > masked.txt
 cat umowa.txt | polanon --ner > masked.txt 2> mapping.json
+polanon --restore --mapping mapping.json --file answer.txt  # przywrócona odpowiedź modelu
+polanon --json "Jan Kowalski, PESEL 50810112354"  # {"text": "...", "mapping": {...}}
 ```
+
+`--restore` wstawia oryginały z powrotem do zamaskowanego tekstu, na przykład odpowiedzi modelu,
+z mapowaniem zapisanym przez `--mapping`, także osobę w innym przypadku; token, którego mapowanie
+nie zna, zostaje bez zmian. `--json` wypisuje zamiast tego jeden obiekt JSON na stdout, dla
+skryptów: tekst, a także mapowanie, chyba że trafia do pliku z `--mapping`.
 
 Niezerowy kod wyjścia oznacza, że coś poszło nie tak, a komunikat na stderr wyjaśnia, co. `--file`
 sam czyta bajty pliku i odróżnia od siebie UTF-8, UTF-16 (tak zapisuje Windows PowerShell 5.1
@@ -443,6 +449,10 @@ i nie wysyłaj do modelu. `PolanonStreamRestorer` przywraca odpowiedź w strumie
 podajesz w czasie uruchomienia, `{"mask": {"known": clients}}`, więc nigdy nie trafiają do zapisanego
 potoku.
 
+**Detektory.** Oba maskowniki używają samych reguł, chyba że dostaną `with_ner=True`; wtedy
+`spacy_model`, `mode` i `ml_filter` działają tak jak w `default_guards`:
+`PolanonDocumentMasker(store=mappings, with_ner=True, mode="paranoid")`.
+
 **Zapisywanie potoku.** Klucz to `Secret` Haystacka, a zapisany potok zawiera tylko nazwę jego
 zmiennej. Magazyn mapowań zapisuje się przez własne `to_dict`, które powinno mówić, dokąd się łączy,
 a nigdy, co przechowuje; `InMemoryMappingStore` go nie ma, więc potok z nim budujesz w kodzie.
@@ -453,6 +463,10 @@ Haystack 3 wczytuje klasy tylko z własnych modułów, więc dopuść ten moduł
 to, co dostaje każdy komponent, a maskownik dostaje oryginały. Nieudane uruchomienie zachowuje swoje
 wejścia w snapshocie błędu, zapisywanym na dysk przy `HAYSTACK_PIPELINE_SNAPSHOT_SAVE_ENABLED`. Oba
 są domyślnie wyłączone.
+
+**Telemetria samego Haystacka jest domyślnie włączona.** Haystack wysyła na własne serwery dane o
+tym, jak używane są jego potoki, chyba że ustawisz `HAYSTACK_TELEMETRY_ENABLED=False`; polanon nie
+wysyła niczego. Tam, gdzie z maszyny mają wychodzić tylko zamaskowane zapytania, ustaw tę zmienną.
 
 ## Bramka dla każdego narzędzia zgodnego z API OpenAI
 
@@ -475,7 +489,7 @@ Albo w Dockerze, z modelem spaCy w środku, tak samo na komputerach z procesorem
 
 ```bash
 docker run --rm -p 127.0.0.1:8787:8787 -e POLANON_UPSTREAM_KEY -e POLANON_GATEWAY_KEY \
-    ghcr.io/boromat/polanon-gateway:0.3 --upstream https://api.openai.com/v1
+    ghcr.io/boromat/polanon-gateway:0.4 --upstream https://api.openai.com/v1
 ```
 
 W kontenerze bramka słucha na wszystkich interfejsach, więc startuje tylko
@@ -484,8 +498,8 @@ i potrzebuje `POLANON_UPSTREAM_KEY`, klucza dostawcy, który wysyła zamiast nie
 `-p 127.0.0.1:8787:8787` zostawia port na tym komputerze. Każda opcja `polanon-gateway` idzie
 po nazwie obrazu. Model na tym samym komputerze, na przykład Ollama, to `--upstream
 http://host.docker.internal:11434/v1`, a na Linuksie dodatkowo
-`--add-host=host.docker.internal:host-gateway`. Obraz ma tagi z wersją, na przykład `0.3.9`,
-z wersją pomniejszą, `0.3`, i `latest`.
+`--add-host=host.docker.internal:host-gateway`. Obraz ma tagi z wersją, na przykład `0.4.0`,
+z wersją pomniejszą, `0.4`, i `latest`.
 
 | Narzędzie | Gdzie wpisać adres bazowy |
 |---|---|
@@ -532,18 +546,20 @@ Co robi z jednym wywołaniem:
   w linii, zostawiają czytelne nazwy, które model musi widzieć takimi, jakie są, na przykład
   imię asystenta i firmę, w imieniu której mówi; tak podana osoba też zostaje czytelna.
   Reszta promptu jest maskowana jak dotąd.
-- Niczego nie zapisuje na dysku. Narzędzie wysyła całą rozmowę przy każdym wywołaniu, a każde
-  wywołanie jest maskowane i przywracane osobno. Z `POLANON_KEY` ustawionym na 64 znaki
-  szesnastkowe dana osoba ma jeden token w każdym wywołaniu i w każdym przypadku gramatycznym.
-- Ustaw `"return_pii_map": true` przy wywołaniu chat, Responses albo embeddings, gdy wywołujący
-  potrzebuje w odpowiedzi także mapy tokenów: flaga jest zdejmowana zanim dostawca zobaczy
-  żądanie, a obiekt `return_pii_map` trafia do odpowiedzi JSON albo do ostatniego zdarzenia
-  strumienia. Mapa nie jest logowana ani wysyłana do dostawcy.
+- `--pii-map` pozwala klientowi, który prowadzi własny rejestr, audyt albo magazyn mapowań,
+  poprosić o mapowanie wywołania: z `"return_pii_map": true` w żądaniu odpowiedź niesie
+  `"return_pii_map": {"<OSOBA_1>": "Jan Kowalski"}` i `polanon_mask_ms`, ile trwało maskowanie,
+  a strumień niesie oba w ostatnim zdarzeniu, przy chat completions w osobnym kawałku przed
+  `[DONE]`. Ten sam czas idzie w nagłówku `Server-Timing` jako `polanon-mask`. Dostawca nigdy
+  nie widzi tego pola, a mapa nie jest logowana. Bez tej opcji takie żądanie jest odrzucane.
 - `--skip-system` przy chat completions zostawia bez maski wiadomości system i developer oraz
   definicje narzędzi, a maskuje tylko user, assistant i tool. Kontekst firmy, który jest tylko
   w prompcie albo w opisie narzędzia, nie staje się tokenem. Przy `return_pii_map` obiekt
   zawiera wtedy wyłącznie zastąpienia z wiadomości user, assistant i tool. Ta sama nazwa
   w prompcie i w pytaniu zostaje w prompcie, a w pytaniu jest tokenem.
+- Niczego nie zapisuje na dysku. Narzędzie wysyła całą rozmowę przy każdym wywołaniu, a każde
+  wywołanie jest maskowane i przywracane osobno. Z `POLANON_KEY` ustawionym na 64 znaki
+  szesnastkowe dana osoba ma jeden token w każdym wywołaniu i w każdym przypadku gramatycznym.
 
 Klucze zostają u tego, kto uruchamia bramkę, i są brane wyłącznie ze zmiennych środowiskowych.
 Domyślnie bramka przekazuje dalej klucz narzędzia; `POLANON_UPSTREAM_KEY` wysyła zamiast niego
@@ -582,11 +598,11 @@ Na oznaczonych przykładowych dokumentach z repozytorium same reguły maskują w
 a reguły z `pl_core_news_md` 98%, przy czym nic nie zostaje zamaskowane tylko w części. Trzynaście
 krótkich dokumentów to test regresji, a nie benchmark badawczy:
 [notatki z benchmarku](https://github.com/boromat/polanon/blob/main/benchmarks/README.md) opisują,
-co zostaje przeoczone i dlaczego, i podają wynik Presidio na pierwszych jedenastu z nich z tym
-samym modelem: 66% zamaskowanych w całości, 76% przy najłagodniejszym sposobie liczenia. Osiem
+co zostaje przeoczone i dlaczego, i podają wynik Presidio na nich z tym samym modelem: 67%
+zamaskowanych w całości, 77% przy najłagodniejszym sposobie liczenia. Osiem
 wymyślonych wywołań agenta AI, z jego angielskim promptem, narzędziami i ich JSON-em, kodem,
 logami, umową najmu i pocztą w trzech językach, mierzy, ile kosztuje ruch agenta:
-z `pl_core_news_md` do modelu trafiają 3 z 243 oznaczonych wystąpień, a 5 z 307 użyć tokenów nic
+z `pl_core_news_md` do modelu trafiają 2 z 243 oznaczonych wystąpień, a 5 z 309 użyć tokenów nic
 nie ukrywa, tylko zasłania słowo, którego model nie może przeczytać. Odpowiedzi modelu wracają ze
 wszystkimi tokenami przywróconymi, jako tekst, jako odpowiedź i jako strumień, a 39 z ich 40 linii
 brzmi dokładnie tak, jak napisałby je człowiek.
@@ -614,7 +630,12 @@ Kowalski” tam, gdzie tekst mówił „Jana Kowalskiego”. Prosi o to `token_i
 a rozumie to każde przywracanie, także strumień i bramka. Odmieniane są imiona i nazwiska z jednego
 lub dwóch słów, które reguły czytają na pewno: imię z listy i nazwisko w rodzaju Kowalski, Nowak,
 Bednarek, Mickiewicz albo Duda. Samo nazwisko, które może należeć do mężczyzny albo kobiety, obce
-nazwisko, firma i miejsce wracają tak, jak były zapisane, a przypadek znika. Zapisy różniące się
+nazwisko, firma i miejsce wracają tak, jak były zapisane, a przypadek znika. Inne przypadki osoby,
+która ma już token, dostają jej numer i swój przypadek: po „Jan Kowalski” forma „Janowi
+Kowalskiemu” idzie jako `<OSOBA_1:celownik>`, więc model widzi jedną osobę, a przywracanie odmienia
+imię i nazwisko z powrotem dokładnie do formy z tekstu. Forma, której odmiana nie odtwarza litera
+w literę, na przykład zapisana wielkimi literami, dostaje własny token, a stały token z kluczem
+nie ma przypadku. `CASED_TOKEN_PATTERN` rozpoznaje token z przypadkiem i bez. Zapisy różniące się
 tylko wielkością liter, rodzajem białych znaków (spacja
 niełamiąca, podział wiersza, kilka spacji z rzędu) albo niewidocznymi znakami to ta sama wartość;
 tak samo identyfikator, którego grupy zapisano osobno albo razem: wszystkie te zapisy dzielą jeden
@@ -625,7 +646,8 @@ literami też dostaje własny token, z powodu opisanego niżej.
 
 **Każde wystąpienie zamaskowanej wartości jest maskowane**, także tam, gdzie żaden detektor nie
 rozpoznałby jej samodzielnie: w oryginalnym zapisie, wielkimi literami, rozdzielona podziałem
-wiersza, ze znakiem o zerowej szerokości w środku, z inaczej rozdzielonymi grupami oraz w całości,
+wiersza, ze znakiem o zerowej szerokości w środku, z literami cyrylicy albo greki, które wyglądają
+jak łacińskie, z inaczej rozdzielonymi grupami oraz w całości,
 razem z tym, co detektor znalazł w jej wnętrzu. Dwa wyjątki sprawiają, że zwykłe słowa pozostają
 czytelne. Jednowyrazowa nazwa pisana wielką literą nie jest dopasowywana, gdy występuje zapisana
 samymi małymi literami, bo Zima, Kot i Wilk to nazwiska, a „zima” to pora roku; identyfikatory
@@ -696,6 +718,22 @@ Na wywołaniach agenta AI z `benchmarks/` tryb „normal” przepuszcza 3 z 243 
 a 2% użyć tokenów nic nie ukrywa; „paranoid” przepuszcza 1, imię zapisane cyrylicą, którego nie
 znajduje żaden strażnik, ale nic nie ukrywa ponad połowa użyć. Reguły są w obu trybach te same, więc bez modelu
 tryb niczego nie zmienia.
+
+W trybie normalnym filtr ML odrzuca więcej z tego, co model uznaje za nazwę: to regresja
+logistyczna, która waży fragment, jego słowa i słowa wokół niego, ich wektory oraz to, co
+znalazły tam reguły, dopasowana na publicznych polskich danych. Na każdym benchmarku maskuje
+w całości te same wartości, a fragmentów, które niczego nie ukrywają, zostawia mniej więcej
+o jedną czwartą mniej: na części OpenPII odłożonej do samego końca 400 zamiast 539. Dokłada około
+pół milisekundy do tekstu, który model czyta dwanaście, i niczego nie uczy się z maskowanych
+tekstów: trafia do paczki jako gotowe wagi. Jego wagi czytają wektory `pl_core_news_md`, więc
+przy innym modelu spaCy decydują same ręczne filtry. Jest domyślnie włączony; jak go dopasowano
+i zmierzono, opisują
+[notatki z benchmarku](https://github.com/boromat/polanon/blob/main/benchmarks/README.md#the-ml-filter),
+a tak zostawia się decyzję samym ręcznym filtrom:
+
+```python
+guards = default_guards(ml_filter=False)
+```
 
 ## Druga opinia: sędzia
 
@@ -837,6 +875,15 @@ już wiadomo z profilu, na przykład dla linku do LinkedIna z imieniem i nazwisk
 to sekcja [Dodawanie detektora](https://github.com/boromat/polanon/blob/main/README.pl.md#dodawanie-detektora). polanon jest
 tam opcjonalny: aplikacja instaluje go na żądanie, komunikuje się z nim przez niewielki most
 JSON-lines i nie wysyła zupełnie nic, gdy maskowanie jest włączone, a polanon nie działa.
+
+## Pisali o polanon
+
+- [unknowNews](https://news.mrugalski.pl/post/833420581541117952/13-listopada-2026), newsletter Jakuba Mrugalskiego, 13 listopada 2026: „polanon -
+  zamaskuj polskie dane osobowe przed wysłaniem ich do LLM-a”.
+- [blog.prokulski.science](https://blog.prokulski.science/2026/11/16/pamiec-agentow-ai-polskie-pesel-e-w-promptach-i-wykresy-gestosci-w-power-bi/),
+  cotygodniowy przegląd Łukasza Prokulskiego, 16 listopada 2026: jak polanon odwracalnie maskuje
+  PESEL, NIP i IBAN, także imiona i nazwiska w każdym przypadku, zanim tekst trafi do modelu
+  językowego.
 
 ## Współtworzenie
 

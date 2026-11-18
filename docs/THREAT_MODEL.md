@@ -39,8 +39,9 @@ tokens reach the provider, and puts the originals back into the answer, also whi
   or a closing formula; and whatever you put on a denylist.
 - **Every later occurrence of a masked value.** Pass the mapping from the latest result to the next
   call and a value keeps its token wherever it appears again: in capitals, across a line break or a run of
-  spaces, with a no-break space, an invisible character or a decomposed accent in it, and with an
-  identifier's groups written apart or together. The surname of a masked person and the handle of a
+  spaces, with a no-break space, an invisible character or a decomposed accent in it, with Cyrillic
+  or Greek letters that look Latin in place of Latin ones, and with an identifier's groups written
+  apart or together. The surname of a masked person and the handle of a
   masked profile link count as masked values of their own, so "Kowalski" after "Jan Kowalski" and
   "jkowalski" after "github.com/jkowalski" are masked too. `mask_known_values` does the same for
   text masked earlier, such as conversation history sent again.
@@ -219,8 +220,9 @@ calls, the keys or the logs. What it protects:
   `POLANON_GATEWAY_KEY`, which every client must then send, compared in constant time.
 - **What it keeps.** Nothing on disk: each call is masked and restored with a mapping that lives as
   long as the call. The log holds the path, the status, the time and counts of masked types.
-  With `return_pii_map` on the request, the same mapping is also returned to that client in the
-  answer; it is as sensitive as the restored text, is never logged, and never goes to the provider.
+  With `return_pii_map` on the request, and only when the operator started the gateway with
+  `--pii-map`, the same mapping is also returned to that client in the answer; it is as sensitive
+  as the restored text, is never logged, and never goes to the provider.
   With `--skip-system`, system and developer prompts and tool definitions reach the provider
   unmasked on purpose. The mapping, and so `return_pii_map`, then holds only what was replaced
   in user, assistant and tool messages. It is not a full picture of what the model was shown.
@@ -243,6 +245,12 @@ What it does not protect, and is the operator's part:
 - **Names the operator leaves readable.** A name given with `--allow` or `--allow-file` goes to
   the provider as it is, wherever it stands, a person's too: the assistant's own name or the
   company it speaks for are meant for the model, and so is whatever the operator lists there.
+- **The mapping handed back with `--pii-map`.** A client that asks gets the originals it sent,
+  next to their tokens, in the answer: whatever reads the client's answers, its logs or a proxy
+  in front of it, reads them too. With stable tokens the mapping also tells which token stands
+  for which value, so a client that can send a name it guesses learns its token, and can find
+  that person in an index or a log masked with the same key. Turn it on only for clients that
+  may know that. The provider never sees the field.
 - **Detection.** The gateway masks what the guards find, no more: run it with the spaCy model, and
   read "Residual risk" below. The stage-2 judge is not used.
 - **What the provider learns anyway.** The structure of the conversation, its length and timing,

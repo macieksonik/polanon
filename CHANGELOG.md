@@ -16,14 +16,36 @@ only for a change that breaks something, as CONTRIBUTING.md describes.
   The same value in a user, assistant or tool message is still masked, and the
   last leak check ignores the unmasked prompt and tool definitions so the call
   is not refused.
-
-- **`return_pii_map` on gateway calls.** Set `"return_pii_map": true` on a
-  ``/v1/chat/completions``, ``/v1/responses`` or ``/v1/embeddings`` request and
-  the gateway strips the flag before the call reaches the provider, then adds a
-  `return_pii_map` object to the JSON answer, or to the last event of a stream,
-  with token to original value for that call. Text in the answer is still
-  restored as before. The mapping is as sensitive as the restored answer and is
-  never logged or sent upstream.
+- **`polanon_mask_ms` with a returned mapping.** When the operator started the
+  gateway with `--pii-map` and the client asks for the mapping, the answer also
+  carries `polanon_mask_ms`, how long masking took in milliseconds, and a
+  `Server-Timing` header `polanon-mask`. A stream puts both on the same event
+  as the mapping. Without the mapping neither is sent.
+- **`polanon --restore` and `polanon --json`.** The command line masked but could not put the
+  originals back: `--restore --mapping mapping.json` now restores masked text, such as a model's
+  answer, from arguments, `--file` or standard input, a person named in another case included,
+  and leaves a token the mapping does not hold as it is. `--json` writes one JSON object to
+  stdout for a script, the text and the mapping unless `--mapping` takes it, instead of the text
+  there and the mapping on stderr. A mapping file that is not one is refused without quoting it.
+- **The gateway hands a client the call's mapping when the operator allows it.** Started with
+  `--pii-map`, it answers a request with `"return_pii_map": true` with the mapping of the call,
+  token to original, under `return_pii_map`: in the answer of chat completions, the Responses
+  API, Anthropic's Messages API and embeddings, and in the last event of a stream, which for
+  chat completions is a chunk of its own before `[DONE]`. A token the client wrote itself is left
+  out. The provider never sees the field, a value that is not true or false is refused before
+  anything is sent, and without `--pii-map` a request for the mapping is refused, since with
+  stable tokens it tells which token stands for which value. Proposed by macieksonik in
+  [#30](https://github.com/boromat/polanon/pull/30), with the reasons, the design and the first
+  code; the request there to send the system prompt unmasked is answered by `--allow` and
+  `--allow-file`, which leave the assistant's and its company's names readable.
+- **The Haystack maskers take `mode` and `ml_filter`.** `PolanonDocumentMasker` and
+  `PolanonQueryMasker` built the spaCy guard with its defaults only, so a pipeline could not ask
+  for the paranoid mode or leave the decision to the hand-written filters. Both now pass them on
+  as `default_guards` takes them, refuse a wrong value when they are built, and keep them in a
+  saved pipeline; a pipeline saved before loads with the defaults.
+- **CI runs the tests on Windows.** The package says it runs on any OS, and its command line
+  reads Windows's code pages and UTF-16 and writes UTF-8 to the Windows console, but every job
+  ran on Linux. A job on `windows-latest` now runs the whole suite with the spaCy model.
 
 ### Fixed
 
@@ -32,6 +54,146 @@ only for a change that breaks something, as CONTRIBUTING.md describes.
   known part of the person. A strong surname in an oblique case is masked when
   a distorted, capitalised first-name token stands in front of it. Street
   addresses, dotted abbreviations and form labels stay as they are.
+- **A long text is masked in time that grows with its length, not with its square.** The ML
+  filter of 0.4.0 read the whole text again for every span the spaCy model found: whether the
+  text is English, how often the span stands in it, and the language of the span's line, which
+  in a text on one line, as a tool's JSON is, is the whole text. 100 KB of Polish prose took
+  13 s to mask instead of 2.5 s without the filter, and the gateway masks one call at a time.
+  Each of these is now read once per text and per line, and 100 KB takes 2.9 s. What is masked
+  does not change.
+- **A PESEL right after its label is masked whole however its digits are grouped.** Only the
+  whole number, the birth date apart from the serial number and one digit per box were read as
+  a PESEL. Grouped 3-3-3-2, "PESEL 508 101 123 54" went out as `PESEL <TELEFON_1> 54`, its last
+  two digits in clear, and split after the fifth digit, "PESEL: 50810 112354", it was not masked
+  at all. After a PESEL label eleven digits split by single spaces or dashes anywhere are one
+  PESEL; without the label such groups still are not, since an order number has their shape.
+- **The command line prints the masked text before the mapping.** Standard output is buffered
+  and standard error is not, so in a terminal, or with both sent to one file, the mapping came
+  first. The masked text is now flushed before the mapping is written.
+- **`--mapping` narrows a file that already exists to its owner.** The mapping, which holds the
+  originals, was created readable by its owner only, but a file already there kept its mode, so
+  one left at 0644 by an earlier run or another tool stayed readable by everyone on the machine.
+  It is now set to 0600 before anything is written to it, where the OS has such modes.
+- **A document in many passages is cut in time that grows with its length.** `mask_chunks` and
+  `index_chunks` mask the passages as one text and cut it apart again, and each passage read
+  every masked range of the whole document: 800 passages took 1.4 s, 3,200 took 19 s. Each
+  passage now finds its own ranges by halving, and 3,200 take 1.5 s. The test that guarded this
+  with a limit of 5 s for 800 passages failed under `pytest --cov` on slower machines, and
+  passed while the time still grew with the square; it now checks that four times the passages
+  take less than eight times as long.
+- **A value with a token is masked when written with letters that only look Latin.** "Jan
+  Kowalski" with a Cyrillic a and o in it reads as the same name to a person and a model, but
+  it went out in clear, in the next text and in the same one, and the gateway's last check
+  before a call leaves did not see it either. The search for values with a token now reads the
+  Cyrillic and Greek letters that look Latin as the Latin ones, and such a spelling keeps the
+  value's token. The stable tokens are computed as before, so an index needs no rebuilding.
+- **Two spellings of one value share a numbered token where they share a stable one.** With
+  numbered tokens "jan.kowalski@example.com" and "jan.kowalski [at] example.com" were
+  `<EMAIL_1>` and `<EMAIL_2>`, and so were a phone with and without +48 and an account with
+  and without "PL", while the stable tokens took each pair for one value. A value now keeps its
+  token in every spelling its stable token covers; a person named in another case still gets
+  the token with that case. The keys behind this and the lookalike letters are worked out once
+  per call and forgotten with the call's other values, so a call of 400 KB of an AI agent's
+  history is masked as fast as in 0.4.0.
+- **A KRS number after its label is a KRS number.** One ten-digit number in eleven passes the
+  NIP checksum, and "KRS 0000012345" went out as `KRS <NIP_1>`: masked, under the wrong name. A
+  number right after a KRS label is now left to the KRS rule, unless a NIP label stands before
+  it.
+- **The ML filter reviews spans only with the spaCy model it was fitted on.** Its weights read
+  the word vectors of `pl_core_news_md`, but it ran with any Polish model: on the vectors of
+  `pl_core_news_lg`, another space, and on `pl_core_news_sm`, which has none, where the weights
+  of the vectors silently counted for nothing. With another model the hand-written filters now
+  decide alone, as with `ml_filter=False`; with `pl_core_news_md` nothing changes.
+- **A zero-width space between a first name and a surname reads as a space.** The guards drop
+  invisible characters, so "Jan" and "Kowalski" with only a zero-width space between them were
+  read as one word, which no rule takes for a person, and only the spaCy model masked them.
+  Where such a space stands between a lowercase letter and a capital, it is now read as the
+  space it stands for; inside a word it is still dropped.
+- **The tests make no network calls with Haystack installed.** Haystack's telemetry, on by
+  default, looked up its server four times during `tests/test_haystack.py`, while CONTRIBUTING
+  promises tests without network. The tests now switch it off, and the README and the Haystack
+  page say how to switch it off where nothing but the masked calls should leave the machine.
+- **A stream the provider breaks off keeps its last words.** When the provider broke off a
+  streamed answer with a connection error, the gateway ended the stream without the text it was
+  still holding back in case it began a token, so an answer that stopped on "Tak, <OSOBA"
+  reached the client as "Tak, ". It now sends that text first, as it already did for a stream
+  that ends without finishing. Nothing leaked, since what is held back is still masked.
+
+## [0.4.0] - 2026-11-18
+
+A minor release, since masked text changes shape: a person named again in another case goes out
+as `<OSOBA_1:celownik>`, which `TOKEN_PATTERN` does not match. Code that reads masked text for
+its tokens should use the new `CASED_TOKEN_PATTERN`; restoring needs no change, as every restore
+already understood such tokens. The spaCy guard gets an ML filter, on by default: on OpenPII's
+test part polanon still masks 3,733 of 5,255 values whole and raises 306 false alarms instead of
+434, eight times fewer than Presidio's 2,641, and `ml_filter=False` switches it off. Logins
+written from a name are masked whole, with their surname, and English words that are forms of a
+first name stay words.
+
+### Added
+
+- **An ML filter for the spaCy guard, on by default.** In the normal mode a logistic regression
+  drops more of what the Polish model reads as a name; `default_guards(ml_filter=False)` or
+  `NerGuard(ml_filter=False)` leaves the decision to the hand-written filters alone. It weighs the span's shape, its words and the words around
+  it, their vectors in the spaCy model, and whether a rule found something there, once every
+  guard has read the text. It was fitted on OpenPII's Polish rows and KPWr's train part, which
+  no benchmark reads, chosen by cross-validation by document, and its thresholds were set end to
+  end on dev parts, with a margin. On a part held out until it was done, measured once, it masks
+  the same 4,878 values whole and leaves 400 spans outside the annotations instead of 539; on
+  OpenPII's test part, 306 instead of 434, the same 3,733 values; KPWr, the agent's calls and the
+  sample documents are unchanged. It costs about half a millisecond a text, against twelve for
+  the spaCy model, and it learns nothing from the texts it masks. `benchmarks/ml_filter_data.py`,
+  `ml_filter_train.py` and `ml_filter_tune.py` rebuild it, and `run.py`, `run_agent.py` and
+  `run_external.py` take `--no-ml-filter` or `--without-ml-filter` to compare. The masking reads
+  its weights in plain Python; numpy only fits them. With it, polanon has 306 false alarms on
+  OpenPII's test part to Presidio's 2,641, eight times fewer.
+
+### Changed
+
+- **One person is one number in every case, also without a key.** Each case of a name went out
+  as a token of its own: "Jan Kowalski złożył wniosek. Proszę odpisać Janowi Kowalskiemu" became
+  `<OSOBA_1> złożył wniosek. Proszę odpisać <OSOBA_2>`, and the model read two people. A form of
+  a person who already has a token now takes that token with its case after a colon,
+  `<OSOBA_1:celownik>`, so the model sees one person in the case the text used. Restoring already
+  understood such tokens and declines the name back; a case is written only where declining the
+  kept form gives exactly the text's spelling, so restoring the masked text still gives the text
+  back, and any other form, one in capitals for instance, keeps a token of its own. The mapping
+  holds no new entries for the other cases. Masked text may now hold such tokens:
+  `CASED_TOKEN_PATTERN`, new in the package, matches a token with a case or without, where
+  `TOKEN_PATTERN` matches one without. Text masked before and sent again keeps them whole, the
+  token instructions tell the model what they mean, and a stable token from a key carries no
+  case, since an index searches for it as it is.
+
+### Fixed
+
+- **English words that are forms of a first name stay words.** Three of the names 0.3.9 took
+  from the PESEL register have a form that reads as an English word once a chat drops its
+  Polish letters: Alona's "Alonę" is "alone", Nika's "Nice" is "nice" and Maxim's "Maxima" is
+  "maxima". In lowercase text, an agent's English tools and logs among it, "alone", every word
+  holding it such as "standalone", and "nice" were masked as people. Nothing leaked, but the
+  model read a token where a word stood. Such forms are now treated as "Kalina" is, a name next
+  to its surname and a word on its own, and every form of the register's names was checked
+  against the English of Python's documentation. No benchmark loses a value, and on OpenPII one
+  span outside the values goes.
+- **A login written from a name is masked whole, and so is the surname in it.** "jan.nowak",
+  "anna.kowalczyk", "t.malinowski" or "jan_kowalski", the way an account, a home directory or an
+  address book writes a person, went out as `<OSOBA_1>.nowak`: the first name was masked and the
+  dot ended it, so the surname reached the model next to the person's token, and a check that
+  looks for the masked values in the outgoing text could not see it. A lowercase login of a first
+  name or an initial, one dot, "_" or "-", and a word that reads as a surname is now one person.
+  The surname in it, and in the local part of an e-mail address shaped the same way,
+  "anna.kowalczyk@example.com", joins the known values, so "Kowalczyk" further down and the other
+  logins made of it, "akowalczyk", are masked as well. A surname of five letters now gives a
+  login when a dot, "_" or "-" stands next to it, "nowak_j"; glued straight on it still takes
+  six, so "nowakowie" stays a word.
+- **The label of a field no longer goes inside a person's token.** The Polish spaCy model reads
+  a word of software English before a surname as a first name: "Login Kowalski", "Email Nowaka"
+  and "Admin: Ola Kowalska" came back as one person each, so the model saw `<OSOBA_1> nie
+  działa` where the text said that a login does not work. Nothing leaked, but the label was
+  hidden with the name. Such words at the front of a person are now cut off, and the rest of the
+  span is masked as before. The list of those words leaves out every word that is also a first
+  name or a surname, so "Grant Nowak" stays whole, and the paranoid mode keeps the span as the
+  model found it.
 
 ## [0.3.9.1] - 2026-11-17
 

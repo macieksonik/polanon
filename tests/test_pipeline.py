@@ -83,6 +83,84 @@ async def test_existing_tokens_in_the_input_are_left_alone():
     assert result.mapping == {"<OSOBA_1>": "<OSOBA_1>"}  # stands for itself, see the invariants
 
 
+@pytest.mark.parametrize(
+    ("text", "anonymized", "mapping"),
+    [
+        (
+            "Jan Kowalski złożył wniosek. Proszę odpisać Janowi Kowalskiemu, "
+            "a kopię wysłać do Jana Kowalskiego.",
+            "<OSOBA_1> złożył wniosek. Proszę odpisać <OSOBA_1:celownik>, "
+            "a kopię wysłać do <OSOBA_1:dopełniacz>.",
+            {"<OSOBA_1>": "Jan Kowalski"},
+        ),
+        (
+            "Rozmawiałam z Anną Nowak w sprawie Anny Nowak, a potem Anna Nowak wyszła.",
+            "Rozmawiałam z <OSOBA_1> w sprawie <OSOBA_1:dopełniacz>, "
+            "a potem <OSOBA_1:mianownik> wyszła.",
+            {"<OSOBA_1>": "Anną Nowak"},
+        ),
+    ],
+)
+def test_a_person_named_in_another_case_keeps_the_number_and_carries_the_case(
+    text, anonymized, mapping
+):
+    """Each case of one person went out as a token of its own, "<OSOBA_1> złożył wniosek.
+    Proszę odpisać <OSOBA_2>", and the model read two people. A form the rules decline from the
+    one already masked takes its token with the case after a colon, so the model sees one person,
+    and restoring declines the name back into exactly the form the text wrote."""
+    result = Anonymizer(default_guards(with_ner=False)).anonymize_sync(text)
+
+    assert result.anonymized == anonymized
+    assert result.mapping == mapping
+    assert result.entity_counts == {"PERSON": 3}
+    assert Anonymizer.restore(result.anonymized, result.mapping) == text
+
+
+def test_a_case_joins_a_person_masked_in_an_earlier_turn():
+    anonymizer = Anonymizer(default_guards(with_ner=False))
+    first = anonymizer.anonymize_sync("Wniosek złożył Jan Kowalski.")
+    second = anonymizer.anonymize_sync("Odpisz Janowi Kowalskiemu jutro.", mapping=first.mapping)
+
+    assert second.anonymized == "Odpisz <OSOBA_1:celownik> jutro."
+    assert second.mapping == {"<OSOBA_1>": "Jan Kowalski"}
+    assert Anonymizer.restore(second.anonymized, second.mapping) == (
+        "Odpisz Janowi Kowalskiemu jutro."
+    )
+
+
+def test_a_form_that_declining_does_not_give_back_exactly_keeps_a_token_of_its_own():
+    """Declining "JANA KOWALSKIEGO" gives "JAN KOWALSKI", not "Jan Kowalski": a case would
+    restore the other spelling, so the form keeps its own token and comes back as written."""
+    text = "Do JANA KOWALSKIEGO pisał Jan Kowalski."
+    result = Anonymizer(default_guards(with_ner=False)).anonymize_sync(text)
+
+    assert result.anonymized == "Do <OSOBA_1> pisał <OSOBA_2>."
+    assert Anonymizer.restore(result.anonymized, result.mapping) == text
+
+
+def test_with_a_key_every_case_keeps_the_one_stable_token_without_a_case():
+    """A stable token is computed for every case alike and is what an index searches for, so it
+    carries no case."""
+    from polanon import Pseudonyms
+
+    anonymizer = Anonymizer(default_guards(with_ner=False), pseudonyms=Pseudonyms(bytes(range(32))))
+    result = anonymizer.anonymize_sync("Jan Kowalski pisze do Jana Kowalskiego.")
+
+    first, second = result.anonymized.removesuffix(".").split(" pisze do ")
+    assert first == second
+    assert ":" not in result.anonymized
+
+
+def test_a_token_with_a_case_in_the_input_is_left_alone_and_its_number_is_not_given_out():
+    """A template's "<OSOBA_1:celownik>" stands for itself: the person masked next to it must
+    not get its number, or the template would restore to that person declined."""
+    text = "Szablon: odpisz <OSOBA_1:celownik>. Pisze Jan Kowalski."
+    result = Anonymizer(default_guards(with_ner=False)).anonymize_sync(text)
+
+    assert result.anonymized == "Szablon: odpisz <OSOBA_1:celownik>. Pisze <OSOBA_2>."
+    assert Anonymizer.restore(result.anonymized, result.mapping) == text
+
+
 def test_a_token_number_containing_an_identifier_does_not_seed_new_numbers():
     text = "Pole <OSOBA_50810112354> wypełnia Jan Kowalski."
     result = Anonymizer(default_guards(with_ner=False)).anonymize_sync(text)
@@ -390,13 +468,14 @@ async def test_a_value_known_from_earlier_in_the_conversation_is_masked_without_
 
 
 async def test_a_known_value_inside_a_longer_word_masks_the_whole_word():
-    """Masking only the inside leaves "<OSOBA_1>ego"; leaving it made the final check refuse."""
+    """Masking only the inside leaves "<OSOBA_1>ego"; leaving it made the final check refuse.
+    The whole word is the genitive of the known surname, so it takes its token with the case."""
     text = "Nie było Kowalskiego."
     result = await anonymize(
         text, enabled=ALL, guards=[], judge=None, existing_mapping={"<OSOBA_1>": "Kowalski"}
     )
-    assert result.anonymized == "Nie było <OSOBA_2>."
-    assert result.mapping["<OSOBA_2>"] == "Kowalskiego"
+    assert result.anonymized == "Nie było <OSOBA_1:dopełniacz>."
+    assert result.mapping == {"<OSOBA_1>": "Kowalski"}
     assert Anonymizer.restore(result.anonymized, result.mapping) == text
 
 
@@ -465,6 +544,74 @@ async def test_numbering_still_follows_reading_order_when_values_repeat():
         text, enabled={"PESEL"}, guards=[RegexGuard()], judge=None, existing_mapping={}
     )
     assert result.anonymized == "PESEL <PESEL_1>, potem <PESEL_2>, znowu <PESEL_1>."
+
+
+#: "Jan Kowalski" with a Cyrillic a and o, which a reader and a model read as the Latin letters.
+LOOKALIKE = "J\u0430n K\u043ew\u0430lski"
+
+
+def test_a_value_with_a_token_is_masked_when_written_with_lookalike_letters():
+    """A spelling that leaves a value with a token in clear is a way past the masking: Cyrillic
+    letters that look Latin did, in the next text and in the same one."""
+    anonymizer = Anonymizer(default_guards(with_ner=False))
+    first = anonymizer.anonymize_sync("Jan Kowalski")
+    later = anonymizer.anonymize_sync(f"Pismo od {LOOKALIKE}.", first.mapping)
+    assert later.anonymized == "Pismo od <OSOBA_1>."
+    both = anonymizer.anonymize_sync(f"Jan Kowalski oraz {LOOKALIKE}")
+    assert both.anonymized == "<OSOBA_1> oraz <OSOBA_1>"
+    assert mask_known_values(LOOKALIKE, first.mapping) == "<OSOBA_1>"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Dzwonił Jan\N{ZERO WIDTH SPACE}Kowalski wczoraj.", "Dzwonił <OSOBA_1> wczoraj."),
+        ("Dzwonił Jan Kowal\N{ZERO WIDTH SPACE}ski wczoraj.", "Dzwonił <OSOBA_1> wczoraj."),
+    ],
+)
+def test_a_zero_width_space_between_two_words_reads_as_a_space_and_inside_one_as_nothing(
+    text, expected
+):
+    """A zero-width space as the only gap between a first name and a surname joined them into
+    one word no rule reads as a person; inside a word it still hides nothing."""
+    anonymizer = Anonymizer(default_guards(with_ner=False))
+    assert anonymizer.anonymize_sync(text).anonymized == expected
+
+
+def test_a_mapping_s_keys_are_worked_out_once_per_call_however_many_texts_use_it(monkeypatch):
+    """The gateway masks every text of a call against the whole mapping: worked out again for
+    each text, the keys made the largest recorded call of a real agent 9% slower than in 0.4.0.
+    After `forget`, which the gateway calls after each call, nothing of them is kept."""
+    from polanon import _canonical, _matching
+
+    calls: list[str] = []
+    canonical = _canonical.canonical
+    monkeypatch.setattr(
+        _canonical, "canonical", lambda value, kind: calls.append(value) or canonical(value, kind)
+    )
+    _matching.forget()
+    anonymizer = Anonymizer(default_guards(with_ner=False))
+    for _ in range(3):
+        anonymizer.anonymize_sync("Bez danych.", {"<TELEFON_1>": "600 100 200"})
+    assert calls.count("600 100 200") == 1
+    _matching.forget()
+    anonymizer.anonymize_sync("Bez danych.", {"<TELEFON_1>": "600 100 200"})
+    assert calls.count("600 100 200") == 2
+
+
+def test_an_e_mail_written_with_at_in_brackets_keeps_the_token_of_the_plain_one():
+    """Two spellings the stable tokens took for one address got two numbered tokens."""
+    anonymizer = Anonymizer(default_guards(with_ner=False))
+    first = anonymizer.anonymize_sync("jan.kowalski@example.com")
+    later = anonymizer.anonymize_sync("jan.kowalski [at] example.com", first.mapping)
+    assert later.anonymized == "<EMAIL_1>"
+    both = anonymizer.anonymize_sync("jan.kowalski@example.com i jan.kowalski [at] example.com")
+    assert both.anonymized == "<EMAIL_1> i <EMAIL_1>"
+
+
+def test_a_cyrillic_word_with_no_value_behind_it_stays_as_it_is():
+    text = "Москва, улица Пушкина"
+    assert mask_known_values(text, {"<OSOBA_1>": "Jan Kowalski"}) == text
 
 
 def test_mask_known_values_replaces_every_occurrence_with_its_token():

@@ -87,6 +87,7 @@ def main(
         unsupported=_unsupported(args),
         max_body=args.max_body_mb * 1024 * 1024,
         timeout=args.timeout,
+        pii_map=args.pii_map,
         skip_system=args.skip_system,
     )
     app = Gateway(anonymizer, config)
@@ -147,6 +148,12 @@ def _parser() -> argparse.ArgumentParser:
         choices=("pl", "en", "none"),
         default="pl",
         help="language of the note telling the model what the tokens are, or none",
+    )
+    parser.add_argument(
+        "--pii-map",
+        action="store_true",
+        help='let a client that sends "return_pii_map": true have the mapping of its call, token '
+        "to original, with the answer; the provider never sees it",
     )
     unsupported = parser.add_mutually_exclusive_group()
     unsupported.add_argument(
@@ -278,10 +285,11 @@ def _banner(args: argparse.Namespace, config: Any, detection: str) -> str:
     else:
         keys = "the client's key is passed on"
     unmasked = "; images and files go to the provider unmasked" if args.pass_unsupported else ""
+    mapping = "; clients may ask for each call's mapping" if config.pii_map else ""
     skip = "; system prompts and tools are not masked" if args.skip_system else ""
     return (
         f"polanon gateway on http://{args.host}:{args.port}/v1 -> {args.upstream}; "
-        f"masking with {detection}; {keys}{unmasked}{skip}"
+        f"masking with {detection}; {keys}{unmasked}{mapping}{skip}"
     )
 
 
