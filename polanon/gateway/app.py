@@ -244,9 +244,7 @@ class Gateway:
             lines = _ResponsesLines(
                 turn.mapping, _returned(turn) if wants_map else None, mask_ms=mask_ms
             )
-            status = await self._stream(
-                "responses", masked, headers, send, lines, mask_ms=mask_ms
-            )
+            status = await self._stream("responses", masked, headers, send, lines, mask_ms=mask_ms)
             return status, turn.counts()
         response = await self._post("responses", masked, headers)
         if response.is_success:
